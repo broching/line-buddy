@@ -1,15 +1,15 @@
-import { internalMutation, QueryCtx } from "./_generated/server";
+import { mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { paymentAttemptDataValidator } from "./paymentAttemptTypes";
 
-async function userByExternalId(ctx: QueryCtx, externalId: string) {
+async function userByExternalId(ctx: MutationCtx, externalId: string) {
   return await ctx.db
     .query("users")
     .withIndex("byExternalId", (q) => q.eq("externalId", externalId))
     .unique();
 }
 
-export const savePaymentAttempt = internalMutation({
+export const savePaymentAttempt = mutation({
   args: { 
     paymentAttemptData: paymentAttemptDataValidator
   },

@@ -1,17 +1,26 @@
-import { ChartAreaInteractive } from "@/app/dashboard/chart-area-interactive"
-import { DataTable } from "@/app/dashboard/data-table"
-import { SectionCards } from "@/app/dashboard/section-cards"
+"use client";
 
-import data from "./data.json"
+import { useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useEffect } from "react";
 
-export default function Page() {
+export default function DashboardRootPage() {
+  const router = useRouter();
+  const orgs = useQuery(api.organizations.listForUser);
+
+  useEffect(() => {
+    if (orgs === undefined) return; // still loading
+    if (orgs.length === 0) {
+      router.replace("/onboarding");
+    } else {
+      router.replace(`/dashboard/${orgs[0]!.slug}/overview`);
+    }
+  }, [orgs, router]);
+
   return (
-    <>
-      <SectionCards />
-      <div className="px-4 lg:px-6">
-        <ChartAreaInteractive />
-      </div>
-      <DataTable data={data} />
-    </>
-  )
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-muted-foreground text-sm">Loading…</div>
+    </div>
+  );
 }

@@ -1,4 +1,4 @@
-import { internalMutation, query, QueryCtx } from "./_generated/server";
+import { mutation, query, QueryCtx } from "./_generated/server";
 import { UserJSON } from "@clerk/backend";
 import { v, Validator } from "convex/values";
 
@@ -9,12 +9,17 @@ export const current = query({
   },
 });
 
-export const upsertFromClerk = internalMutation({
+export const upsertFromClerk = mutation({
   args: { data: v.any() as Validator<UserJSON> }, // no runtime validation, trust Clerk
   async handler(ctx, { data }) {
+    const primaryEmail = data.email_addresses?.find(
+      (e: any) => e.id === data.primary_email_address_id
+    )?.email_address;
+
     const userAttributes = {
       name: `${data.first_name} ${data.last_name}`,
       externalId: data.id,
+      email: primaryEmail ?? undefined,
     };
 
     const user = await userByExternalId(ctx, data.id);
@@ -26,7 +31,17 @@ export const upsertFromClerk = internalMutation({
   },
 });
 
-export const deleteFromClerk = internalMutation({
+export const getByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    return ctx.db
+      .query("users")
+      .withIndex("byEmail", (q) => q.eq("email", email.toLowerCase().trim()))
+      .unique();
+  },
+});
+
+export const deleteFromClerk = mutation({
   args: { clerkUserId: v.string() },
   async handler(ctx, { clerkUserId }) {
     const user = await userByExternalId(ctx, clerkUserId);
