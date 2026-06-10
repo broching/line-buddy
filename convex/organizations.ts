@@ -1,4 +1,4 @@
-import { internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUser, requireMembership, computeOrgRole } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
@@ -131,21 +131,35 @@ export const get = query({
       .unique();
     if (!user) return null;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerkOrgId = (identity as any)?.org_id as string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerkOrgRole = (identity as any)?.org_role as string | undefined;
+
     const membership = await ctx.db
       .query("memberships")
       .withIndex("byOrgAndUser", (q) =>
         q.eq("organizationId", org._id).eq("userId", user._id)
       )
       .unique();
-    if (!membership?.isActive) return null;
 
     const profileImageUrl = org.profileImageStorageId
       ? await ctx.storage.getUrl(org.profileImageStorageId)
       : null;
 
-    const myRole = computeOrgRole(membership, org.ownerId);
+    if (membership?.isActive) {
+      const myRole = computeOrgRole(membership, org.ownerId);
+      return { ...org, profileImageUrl, myRole };
+    }
 
-    return { ...org, profileImageUrl, myRole };
+    // Allow access during webhook race condition: Clerk org context matches
+    if (clerkOrgId && org.clerkOrgId === clerkOrgId) {
+      const myRole: "owner" | "admin" | "member" =
+        user._id === org.ownerId ? "owner" : clerkOrgRole === "org:admin" ? "admin" : "member";
+      return { ...org, profileImageUrl, myRole };
+    }
+
+    return null;
   },
 });
 
@@ -293,5 +307,112 @@ export const removeProfileImage = mutation({
       entityId: organizationId,
       payload: {},
     });
+  },
+});
+
+// ─── Internal: Clerk Organization sync ───────────────────────────────────────
+
+export const createFromClerk = internalMutation({
+  args: {
+    clerkOrgId: v.string(),
+    name: v.string(),
+    slug: v.string(),
+    createdByClerkId: v.string(),
+  },
+  handler: async (ctx, { clerkOrgId, name, slug, createdByClerkId }) => {
+    // Idempotency: skip if already exists
+    const existing = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (existing) return existing._id;
+
+    const creator = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", createdByClerkId))
+      .unique();
+    if (!creator) {
+      console.warn(`[org.createFromClerk] Creator not found for Clerk user ${createdByClerkId}`);
+      return null;
+    }
+
+    // Ensure slug uniqueness
+    let finalSlug = toSlug(slug) || toSlug(name) || "org";
+    let attempt = 0;
+    while (true) {
+      const taken = await ctx.db
+        .query("organizations")
+        .withIndex("bySlug", (q) => q.eq("slug", finalSlug))
+        .unique();
+      if (!taken) break;
+      attempt += 1;
+      finalSlug = `${toSlug(slug) || "org"}-${attempt}`;
+    }
+
+    const orgId = await ctx.db.insert("organizations", {
+      name,
+      slug: finalSlug,
+      ownerId: creator._id,
+      clerkOrgId,
+      planId: "free",
+      isActive: true,
+      createdAt: Date.now(),
+    });
+
+    for (const teamDef of DEFAULT_TEAMS) {
+      const teamId = await ctx.db.insert("teams", {
+        organizationId: orgId,
+        name: teamDef.name,
+        description: teamDef.description,
+        isDefault: teamDef.isDefault,
+      });
+      for (const roleDef of teamDef.roles) {
+        await ctx.db.insert("roles", {
+          organizationId: orgId,
+          teamId,
+          name: roleDef.name,
+          description: roleDef.description,
+          isDefault: roleDef.isDefault,
+        });
+      }
+    }
+
+    await ctx.runMutation(internal.billing.initFreeForOrg, { organizationId: orgId, userId: creator._id });
+
+    await writeAuditLog(ctx, {
+      organizationId: orgId,
+      actorId: creator._id,
+      actorType: "system",
+      eventType: "organization.created",
+      entityType: "organization",
+      entityId: orgId,
+      payload: { name, slug: finalSlug, clerkOrgId },
+    });
+
+    return orgId;
+  },
+});
+
+export const updateFromClerk = internalMutation({
+  args: { clerkOrgId: v.string(), name: v.string() },
+  handler: async (ctx, { clerkOrgId, name }) => {
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (!org) return;
+    await ctx.db.patch(org._id, { name });
+  },
+});
+
+export const deleteFromClerk = internalMutation({
+  args: { clerkOrgId: v.string() },
+  handler: async (ctx, { clerkOrgId }) => {
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (!org) return;
+    await ctx.db.patch(org._id, { isActive: false });
   },
 });

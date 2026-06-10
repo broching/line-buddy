@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { handleLineWebhook } from "./lineWebhook";
 import { handleClerkWebhook } from "./clerkWebhook";
+import { handleStripeWebhook } from "./stripeWebhook";
 
 const http = httpRouter();
 
@@ -29,6 +30,13 @@ http.route({
   path: "/webhooks/clerk",
   method: "POST",
   handler: handleClerkWebhook,
+});
+
+// Stripe payment webhook
+http.route({
+  path: "/webhooks/stripe",
+  method: "POST",
+  handler: handleStripeWebhook,
 });
 
 export default http;

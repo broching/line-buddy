@@ -91,11 +91,55 @@ export const handleClerkWebhook = httpAction(async (ctx, request) => {
           const item = paymentData.subscription_items[0];
           await ctx.runMutation(internal.billing.activateFromPayment, {
             clerkUserId: paymentData.payer.user_id,
+            clerkOrgId: paymentData.payer.organization_id ?? undefined,
             planId: item.plan.id,
             periodStart: item.period_start,
             periodEnd: item.period_end,
           });
         }
+        break;
+      }
+      case "organization.created": {
+        const orgData = event.data as any;
+        await ctx.runMutation(internal.organizations.createFromClerk, {
+          clerkOrgId: orgData.id as string,
+          name: orgData.name as string,
+          slug: (orgData.slug ?? "") as string,
+          createdByClerkId: (orgData.created_by ?? "") as string,
+        });
+        break;
+      }
+      case "organization.updated": {
+        const orgData = event.data as any;
+        await ctx.runMutation(internal.organizations.updateFromClerk, {
+          clerkOrgId: orgData.id as string,
+          name: orgData.name as string,
+        });
+        break;
+      }
+      case "organization.deleted": {
+        const orgData = event.data as any;
+        await ctx.runMutation(internal.organizations.deleteFromClerk, {
+          clerkOrgId: (orgData.id ?? "") as string,
+        });
+        break;
+      }
+      case "organizationMembership.created":
+      case "organizationMembership.updated": {
+        const memData = event.data as any;
+        await ctx.runMutation(internal.memberships.syncFromClerk, {
+          clerkOrgId: memData.organization.id as string,
+          clerkUserId: memData.public_user_data.user_id as string,
+          role: memData.role as string,
+        });
+        break;
+      }
+      case "organizationMembership.deleted": {
+        const memData = event.data as any;
+        await ctx.runMutation(internal.memberships.removeFromClerk, {
+          clerkOrgId: memData.organization.id as string,
+          clerkUserId: memData.public_user_data.user_id as string,
+        });
         break;
       }
       default:

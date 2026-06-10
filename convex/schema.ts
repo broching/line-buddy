@@ -22,6 +22,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(), // URL-safe unique identifier
     ownerId: v.id("users"),
+    clerkOrgId: v.optional(v.string()), // Clerk organization ID (org_xxx) — set when created via Clerk
     profileImageStorageId: v.optional(v.id("_storage")),
     lineChannelAccessToken: v.optional(v.string()), // encrypted
     lineChannelSecret: v.optional(v.string()), // encrypted
@@ -30,7 +31,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("bySlug", ["slug"])
-    .index("byOwnerId", ["ownerId"]),
+    .index("byOwnerId", ["ownerId"])
+    .index("byClerkOrgId", ["clerkOrgId"]),
 
   // ─── Memberships (dashboard access — Clerk users who can use the CRM) ────────
   memberships: defineTable({
@@ -358,15 +360,69 @@ export default defineSchema({
       v.literal("cancelled"), // subscription cancelled
       v.literal("free"),      // no subscription
     ),
-    creditsTotal: v.number(),                // 10 000 for paid, 0 for free
+    creditsTotal: v.number(),                // Clerk-granted + Stripe top-ups
     creditsUsed: v.number(),                 // consumed this billing period
     creditsPeriodStart: v.optional(v.number()),
     creditsPeriodEnd: v.optional(v.number()),
     storageUsedBytes: v.number(),            // knowledge-source storage consumed
     updatedAt: v.number(),
+    // ── Stripe credit top-up fields ──────────────────────────────────────────
+    stripeCustomerId: v.optional(v.string()),
+    autoRechargeEnabled: v.optional(v.boolean()),
+    autoRechargeThreshold: v.optional(v.number()), // trigger when balance drops below this
+    autoRechargePack: v.optional(v.string()),       // pack key: "1000"|"5000"|"15000"|"50000"
+    autoRechargeInProgress: v.optional(v.boolean()), // lock to prevent concurrent recharges
+    monthlySpendLimitSGD: v.optional(v.number()),  // SGD cap per calendar month
   })
     .index("byOrganizationId", ["organizationId"])
     .index("bySubscriberUserId", ["subscriberUserId"]),
+
+  // ─── Credit Transactions (append-only ledger) ───────────────────────────────
+  creditTransactions: defineTable({
+    organizationId: v.id("organizations"),
+    type: v.union(
+      v.literal("purchase"),         // Stripe one-time purchase
+      v.literal("auto_recharge"),    // Stripe auto-recharge
+      v.literal("usage"),            // AI token consumption
+      v.literal("refund"),
+      v.literal("admin_adjustment"),
+    ),
+    amount: v.number(),         // positive = credits added, negative = credits used
+    balanceAfter: v.number(),   // snapshot of creditsTotal - creditsUsed after this tx
+    description: v.string(),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    metadata: v.optional(v.any()), // { priceSGD, packId, tokenCount, ... }
+    createdAt: v.number(),
+    createdBy: v.optional(v.id("users")), // null for AI usage
+  })
+    .index("byOrganizationId", ["organizationId"])
+    .index("byOrganizationAndCreatedAt", ["organizationId", "createdAt"]),
+
+  // ─── Stripe Events (idempotency store) ──────────────────────────────────────
+  stripeEvents: defineTable({
+    stripeEventId: v.string(), // Stripe's evt_xxx ID
+    type: v.string(),
+    processedAt: v.number(),
+  })
+    .index("byStripeEventId", ["stripeEventId"]),
+
+  // ─── Stripe Payments (purchase records) ─────────────────────────────────────
+  stripePayments: defineTable({
+    organizationId: v.id("organizations"),
+    stripePaymentIntentId: v.string(),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    amountCents: v.number(),       // in SGD cents
+    currency: v.string(),          // "sgd"
+    status: v.union(v.literal("pending"), v.literal("succeeded"), v.literal("failed")),
+    creditsPurchased: v.number(),
+    packId: v.string(),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("byOrganizationId", ["organizationId"])
+    .index("byStripePaymentIntentId", ["stripePaymentIntentId"])
+    .index("byStripeCheckoutSessionId", ["stripeCheckoutSessionId"]),
 
   // ─── Knowledge Sources (org-level RAG documents) ────────────────────────────
   knowledgeSources: defineTable({

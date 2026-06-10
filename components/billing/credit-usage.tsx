@@ -3,10 +3,11 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { IconSparkles, IconDatabase } from "@tabler/icons-react";
+import { IconCoins, IconDatabase, IconPlus } from "@tabler/icons-react";
+import Link from "next/link";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -15,71 +16,112 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function CreditUsageCards({ organizationId }: { organizationId: Id<"organizations"> }) {
+export function CreditUsageCards({
+  organizationId,
+  topUpUrl,
+}: {
+  organizationId: Id<"organizations">;
+  topUpUrl?: string;
+}) {
   const billing = useQuery(api.billing.getForOrg, { organizationId });
 
   if (!billing) return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Skeleton className="h-28 rounded-xl" />
-      <Skeleton className="h-28 rounded-xl" />
+      <Skeleton className="h-[108px] rounded-xl" />
+      <Skeleton className="h-[108px] rounded-xl" />
     </div>
   );
 
   const periodEnd = billing.creditsPeriodEnd
-    ? new Date(billing.creditsPeriodEnd).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(billing.creditsPeriodEnd).toLocaleDateString([], {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
     : null;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {/* Credits */}
+      {/* ── AI Credits ────────────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">AI Credits</CardTitle>
-          <IconSparkles className="size-4 text-violet-500" />
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-bold">
+        <CardContent className="px-4 pt-4 pb-4 flex flex-col gap-2">
+          {/* Header: icon + label + top-up button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="size-9 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
+                <IconCoins className="size-5 text-amber-500" />
+              </div>
+              <span className="text-sm font-semibold">AI Credits</span>
+            </div>
+            {topUpUrl && (
+              <Link
+                href={topUpUrl}
+                className="flex items-center gap-1 rounded-lg border border-amber-500/30 px-2.5 py-1.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 transition-colors"
+              >
+                <IconPlus className="size-3" />
+                Top up
+              </Link>
+            )}
+          </div>
+
+          {/* Balance */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-3xl font-bold tabular-nums">
               {billing.isActive ? billing.creditsRemaining.toLocaleString() : "—"}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {billing.isActive ? `/ ${billing.creditsTotal.toLocaleString()} total` : "No active plan"}
-            </span>
+            {billing.isActive && (
+              <span className="text-sm font-semibold text-amber-500">credits</span>
+            )}
           </div>
+
+          {/* Subtitle */}
+          <p className="text-xs text-muted-foreground -mt-1">
+            {billing.isActive
+              ? `${billing.creditsUsed.toLocaleString()} used this period${periodEnd ? ` · resets ${periodEnd}` : ""}`
+              : "No active plan"}
+          </p>
+
+          {/* Progress bar */}
           {billing.isActive && (
-            <>
-              <Progress value={100 - billing.creditsPct} className="h-1.5" />
-              <p className="text-xs text-muted-foreground">
-                {billing.creditsUsed.toLocaleString()} used
-                {periodEnd ? ` · resets ${periodEnd}` : ""}
-              </p>
-            </>
+            <Progress
+              value={100 - billing.creditsPct}
+              className="h-1 [&>div]:bg-amber-500"
+            />
           )}
         </CardContent>
       </Card>
 
-      {/* Storage */}
+      {/* ── Knowledge Storage ─────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium">Knowledge Storage</CardTitle>
-          <IconDatabase className="size-4 text-sky-500" />
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-bold">
+        <CardContent className="px-4 pt-4 pb-4 flex flex-col gap-2">
+          {/* Header: icon + label */}
+          <div className="flex items-center gap-2">
+            <div className="size-9 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+              <IconDatabase className="size-5 text-sky-500" />
+            </div>
+            <span className="text-sm font-semibold">Knowledge Storage</span>
+          </div>
+
+          {/* Used */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-3xl font-bold tabular-nums">
               {billing.isActive ? formatBytes(billing.storageUsedBytes) : "—"}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {billing.isActive ? `/ ${formatBytes(billing.storageLimitBytes)}` : "No active plan"}
-            </span>
           </div>
+
+          {/* Subtitle */}
+          <p className="text-xs text-muted-foreground -mt-1">
+            {billing.isActive
+              ? `of ${formatBytes(billing.storageLimitBytes)} · ${billing.storagePct}% used`
+              : "No active plan"}
+          </p>
+
+          {/* Progress bar */}
           {billing.isActive && (
-            <>
-              <Progress value={billing.storagePct} className="h-1.5" />
-              <p className="text-xs text-muted-foreground">
-                {billing.storagePct}% used
-              </p>
-            </>
+            <Progress
+              value={billing.storagePct}
+              className="h-1 [&>div]:bg-sky-500"
+            />
           )}
         </CardContent>
       </Card>
@@ -100,7 +142,7 @@ export function CreditBadge({ organizationId }: { organizationId: Id<"organizati
 
   return (
     <span className={`flex items-center gap-1 text-xs ${color}`}>
-      <IconSparkles className="size-3" />
+      <IconCoins className="size-3" />
       {billing.creditsRemaining.toLocaleString()} credits
     </span>
   );

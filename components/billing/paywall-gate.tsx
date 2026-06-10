@@ -15,7 +15,7 @@ import {
 import { useTheme as useNextTheme } from "next-themes";
 
 const PLAN_FEATURES = [
-  { key: "10000_credits", label: "10,000 AI credits per billing period", desc: "Process messages, extract fields, and answer questions" },
+  { key: "1000_credits", label: "1,000 AI credits per billing period", desc: "Process messages, extract fields, and answer questions" },
   { key: "1gb_knowledge_sources", label: "1 GB knowledge sources storage", desc: "Upload documents to train your bot" },
   { key: "5_seats", label: "Up to 5 team members", desc: "Collaborate with your team on the dashboard" },
   { key: "unlimited_group_chats", label: "Unlimited LINE group chats", desc: "Connect as many groups as you need" },
@@ -49,7 +49,7 @@ export function PaywallGate({
 }
 
 function UpgradeWall() {
-  const { openUserProfile } = useClerk();
+  const { openOrganizationProfile } = useClerk();
   const { theme } = useNextTheme();
 
   return (
@@ -62,7 +62,7 @@ function UpgradeWall() {
               <IconSparkles className="size-7 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Upgrade to Line Buddy</h2>
+              <h2 className="text-xl font-bold">Upgrade to LeadMighty</h2>
               <p className="text-muted-foreground text-sm mt-1">
                 Unlock all features and start automating your LINE group workflows.
               </p>
@@ -89,7 +89,7 @@ function UpgradeWall() {
             size="lg"
             className="w-full gap-2"
             onClick={() =>
-              openUserProfile({
+              openOrganizationProfile({
                 appearance: { baseTheme: theme === "dark" ? dark : undefined },
               })
             }
@@ -98,7 +98,7 @@ function UpgradeWall() {
             Manage subscription
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Open your profile to subscribe or manage billing.
+            Open your organization settings to subscribe and manage billing.
           </p>
         </div>
       </div>

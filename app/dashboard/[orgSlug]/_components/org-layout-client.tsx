@@ -3,6 +3,7 @@
 import { use } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
+import { useOrganization } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import { OrgSidebar } from "./org-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -18,9 +19,15 @@ export function OrgLayoutClient({
   const { orgSlug } = use(params);
   const router = useRouter();
   const org = useQuery(api.organizations.get, { slug: orgSlug });
+  const { organization: clerkOrg } = useOrganization();
 
   // org === undefined → loading; org === null → not found / not a member
   if (org === null) {
+    // Race condition: Clerk session has this org but webhook hasn't created it in Convex yet.
+    // Show nothing briefly rather than redirect — the query will resolve within seconds.
+    if (clerkOrg?.slug === orgSlug) {
+      return null;
+    }
     router.replace("/dashboard");
     return null;
   }
@@ -34,7 +41,12 @@ export function OrgLayoutClient({
         } as React.CSSProperties
       }
     >
-      <OrgSidebar orgSlug={orgSlug} orgName={org?.name ?? ""} myRole={org?.myRole} />
+      <OrgSidebar
+        orgSlug={orgSlug}
+        orgName={org?.name ?? ""}
+        orgImageUrl={org?.profileImageUrl ?? null}
+        myRole={org?.myRole}
+      />
       <SidebarInset>
         <OrgHeader orgSlug={orgSlug} orgName={org?.name ?? ""} />
         <div className="flex flex-1 flex-col">

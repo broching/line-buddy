@@ -132,23 +132,34 @@ export default function ActivityPage({
   return (
     <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
-      <div>
-        <h2 className="text-xl font-semibold">Activity</h2>
-        <p className="text-sm text-muted-foreground">
-          Audit trail of all actions in {org?.name ?? "your organization"}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold">Activity</h2>
+          <p className="text-sm text-muted-foreground">
+            Audit trail of all actions in {org?.name ?? "your organization"}
+          </p>
+        </div>
+        {results.length > 0 && (
+          <div className="shrink-0 rounded-lg border bg-muted/40 px-3 py-1.5 text-center">
+            <p className="text-lg font-bold tabular-nums">{results.length}</p>
+            <p className="text-xs text-muted-foreground">events</p>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
         <ActivitySkeleton />
       ) : results.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <IconHistory className="size-10 text-muted-foreground/30" />
-          <p className="text-sm font-medium">No activity yet</p>
-          <p className="text-xs text-muted-foreground">
-            Actions like creating projects, advancing stages, and updating settings
-            will appear here.
-          </p>
+        <div className="flex flex-col items-center gap-3 py-20 text-center">
+          <div className="size-14 rounded-2xl bg-muted flex items-center justify-center">
+            <IconHistory className="size-7 text-muted-foreground/50" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">No activity yet</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Creating projects, advancing stages, and updating settings will appear here.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="relative flex flex-col">
@@ -196,14 +207,16 @@ export default function ActivityPage({
           })}
 
           {/* Load more */}
-          <div className="pt-4 pl-10">
+          <div className="pt-4 pl-14">
             {status === "CanLoadMore" && (
               <Button
                 variant="outline"
                 size="sm"
+                className="gap-2"
                 onClick={() => loadMore(30)}
               >
-                Load more
+                <IconHistory className="size-3.5" />
+                Load older activity
               </Button>
             )}
             {status === "LoadingMore" && (

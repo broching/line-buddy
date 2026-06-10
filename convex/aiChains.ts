@@ -859,9 +859,10 @@ async function runAIPipeline(
       const totalOutput = traces.reduce((s, t) => s + t.outputTokens, 0);
       const totalTokens = totalInput + totalOutput;
 
-      // Consume credits based on tokens: round(tokens/1000), min 1 if any tokens used
+      // Consume credits based on tokens: ceil(tokens/1000)
+      // 500 tokens → 1, 1000 → 1, 1001 → 2, 4638 → 5
       const creditsToConsume = totalTokens > 0
-        ? Math.max(1, Math.round(totalTokens / 1000))
+        ? Math.ceil(totalTokens / 1000)
         : 0;
 
       if (creditsToConsume > 0) {
@@ -869,6 +870,8 @@ async function runAIPipeline(
           await ctx.runMutation(internal.billing.consumeCredits, {
             organizationId: context!.organizationId,
             amount: creditsToConsume,
+            description: `AI processing (${totalTokens} tokens)`,
+            metadata: { totalTokens, inputTokens: totalInput, outputTokens: totalOutput },
           });
           console.log(`[aiChains] Consumed ${creditsToConsume} credit(s) for ${totalTokens} tokens`);
         } catch (err) {

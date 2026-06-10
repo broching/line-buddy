@@ -8,20 +8,15 @@ import {
   IconFolderOpen,
   IconMessage2,
   IconTemplate,
-  IconUsers,
-  IconSettings,
-  IconHelp,
   IconBrightness,
-  IconCheck,
-  IconPlus,
-  IconSelector,
   IconCreditCard,
 } from "@tabler/icons-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { usePathname, useRouter } from "next/navigation";
 import { useOptimistic, useTransition } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { OrganizationSwitcher } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
+import { useTheme } from "next-themes";
 
 import {
   Sidebar,
@@ -29,80 +24,69 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { NavUser } from "@/app/dashboard/nav-user";
 
-// Deterministic color based on org name for avatar fallback
-function orgColorClass(name: string): string {
-  const colors = [
-    "bg-red-500", "bg-orange-500", "bg-amber-500", "bg-green-600",
-    "bg-teal-500", "bg-blue-600", "bg-indigo-500", "bg-purple-600", "bg-pink-500",
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash << 5) - hash + name.charCodeAt(i);
-    hash |= 0;
-  }
-  return colors[Math.abs(hash) % colors.length];
-}
+type NavItem = {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
 
-function OrgAvatar({
-  name,
-  imageUrl,
-  className = "size-8",
+function NavSection({
+  label,
+  items,
+  optimisticPath,
+  navigate,
 }: {
-  name: string;
-  imageUrl?: string | null;
-  className?: string;
+  label?: string;
+  items: NavItem[];
+  optimisticPath: string;
+  navigate: (url: string) => void;
 }) {
-  if (imageUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={imageUrl}
-        alt={name}
-        className={`${className} rounded-md object-cover shrink-0`}
-      />
-    );
-  }
   return (
-    <div
-      className={`${className} ${orgColorClass(name)} rounded-md flex items-center justify-center text-white font-bold text-sm shrink-0`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
+    <SidebarGroup>
+      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                tooltip={item.title}
+                isActive={optimisticPath.startsWith(item.url)}
+                onClick={() => navigate(item.url)}
+              >
+                <item.icon className="size-4" />
+                <span>{item.title}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
 export function OrgSidebar({
   orgSlug,
   orgName,
-  myRole,
 }: {
   orgSlug: string;
   orgName: string;
-  myRole?: "owner" | "admin" | "member";
+  orgImageUrl?: string | null; // kept for compat — OrganizationSwitcher renders its own avatar
+  myRole?: "owner" | "admin" | "member"; // kept for compat — unused after Members nav removed
 }) {
   const base = `/dashboard/${orgSlug}`;
   const pathname = usePathname();
   const router = useRouter();
   const [optimisticPath, setOptimisticPath] = useOptimistic(pathname);
   const [isPending, startTransition] = useTransition();
-
-  const orgs = useQuery(api.organizations.listForUser);
-  const currentOrg = orgs?.find((o) => o?.slug === orgSlug);
+  const { resolvedTheme } = useTheme();
 
   const navigate = (url: string) => {
     startTransition(() => {
@@ -111,119 +95,80 @@ export function OrgSidebar({
     });
   };
 
-  const isAdmin = myRole === "owner" || myRole === "admin";
-
-  const mainNav = [
+  // ── Section: Workspace ───────────────────────────────────────────────────────
+  const workspaceNav: NavItem[] = [
     { title: "Overview", url: `${base}/overview`, icon: IconChartBar },
     { title: "Projects", url: `${base}/projects`, icon: IconFolderOpen },
     { title: "Group Chats", url: `${base}/groups`, icon: IconMessage2 },
+  ];
+
+  // ── Section: Setup ───────────────────────────────────────────────────────────
+  const setupNav: NavItem[] = [
     { title: "Templates", url: `${base}/templates`, icon: IconTemplate },
     { title: "Knowledge Sources", url: `${base}/knowledge-sources`, icon: IconBooks },
-    ...(isAdmin ? [{ title: "Members", url: `${base}/members`, icon: IconUsers }] : []),
+  ];
+
+  // ── Section: Reports ─────────────────────────────────────────────────────────
+  const reportsNav: NavItem[] = [
     { title: "Analytics", url: `${base}/analytics`, icon: IconChartLine },
     { title: "Activity", url: `${base}/activity`, icon: IconActivity },
   ];
 
-  const settingsNav = [
-    { title: "General", url: `${base}/settings/general`, icon: IconSettings },
-    { title: "LINE", url: `${base}/settings/line`, icon: IconMessage2 },
+  // ── Section: Settings (bottom) ───────────────────────────────────────────────
+  const settingsNav: NavItem[] = [
     { title: "Billing", url: `${base}/settings/billing`, icon: IconCreditCard },
-    { title: "Help", url: "#", icon: IconHelp },
   ];
-
-  const roleLabel = myRole === "owner" ? "Owner" : myRole === "admin" ? "Admin" : "Member";
 
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <OrgAvatar
-                    name={orgName}
-                    imageUrl={currentOrg?.profileImageUrl}
-                    className="size-8"
-                  />
-                  <div className="flex flex-col flex-1 text-left min-w-0">
-                    <span className="text-sm font-semibold truncate">{orgName}</span>
-                    <span className="text-xs text-muted-foreground">{roleLabel}</span>
-                  </div>
-                  <IconSelector className="ml-auto size-4 text-muted-foreground shrink-0" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-64"
-                align="start"
-                side="bottom"
-                sideOffset={4}
-              >
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                  Organizations
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {orgs?.map((org) =>
-                  org ? (
-                    <DropdownMenuItem
-                      key={org._id}
-                      onClick={() => navigate(`/dashboard/${org.slug}/overview`)}
-                      className="flex items-center gap-2 py-2"
-                    >
-                      <OrgAvatar name={org.name} imageUrl={org.profileImageUrl} className="size-6" />
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <span className="text-sm truncate">{org.name}</span>
-                        <span className="text-xs text-muted-foreground capitalize">{org.myRole}</span>
-                      </div>
-                      {org.slug === orgSlug && (
-                        <IconCheck className="size-4 text-primary shrink-0" />
-                      )}
-                    </DropdownMenuItem>
-                  ) : null
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => navigate("/dashboard/new")}
-                  className="flex items-center gap-2"
-                >
-                  <div className="size-6 rounded-md border-2 border-dashed border-muted-foreground/40 flex items-center justify-center">
-                    <IconPlus className="size-3 text-muted-foreground" />
-                  </div>
-                  <span className="text-sm">New organization</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="px-1 py-1">
+          <OrganizationSwitcher
+            afterSelectOrganizationUrl="/dashboard/:slug/overview"
+            afterCreateOrganizationUrl="/dashboard/:slug/overview"
+            afterLeaveOrganizationUrl="/dashboard"
+            hidePersonal
+            appearance={{
+              baseTheme: resolvedTheme === "dark" ? dark : undefined,
+              elements: {
+                rootBox: "w-full",
+                organizationSwitcherTrigger:
+                  "w-full rounded-md px-2 h-12 text-left justify-start gap-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent transition-none",
+                organizationSwitcherTriggerIcon: "ml-auto",
+                organizationPreviewTextContainer: "leading-tight",
+                organizationPreviewMainIdentifier: "text-sm font-semibold",
+                organizationPreviewSecondaryIdentifier: "hidden",
+              },
+            }}
+          />
+        </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent
-            className="flex flex-col gap-1"
-            data-pending={isPending ? "" : undefined}
-          >
-            <SidebarMenu>
-              {mainNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={optimisticPath.startsWith(item.url)}
-                    onClick={() => navigate(item.url)}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent data-pending={isPending ? "" : undefined}>
+        <NavSection
+          label="Workspace"
+          items={workspaceNav}
+          optimisticPath={optimisticPath}
+          navigate={navigate}
+        />
 
+        <NavSection
+          label="Setup"
+          items={setupNav}
+          optimisticPath={optimisticPath}
+          navigate={navigate}
+        />
+
+        <NavSection
+          label="Reports"
+          items={reportsNav}
+          optimisticPath={optimisticPath}
+          navigate={navigate}
+        />
+
+        {/* Settings pushed to bottom */}
         <SidebarGroup className="mt-auto">
+          <SidebarGroupLabel>Settings</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {settingsNav.map((item) => (
@@ -233,7 +178,7 @@ export function OrgSidebar({
                     isActive={optimisticPath.startsWith(item.url)}
                     onClick={() => navigate(item.url)}
                   >
-                    <item.icon />
+                    <item.icon className="size-4" />
                     <span>{item.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -241,7 +186,7 @@ export function OrgSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <label className="cursor-pointer">
-                    <IconBrightness />
+                    <IconBrightness className="size-4" />
                     <span>Dark Mode</span>
                     <span className="ml-auto">
                       <ModeToggle />

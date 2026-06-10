@@ -42,6 +42,12 @@
       "sourceType": "github",
       "skillPath": "config/skills/langchain-rag/SKILL.md",
       "computedHash": "ebdbd5a7c2c190d3e5a44a2522949867cc211641af1925e086a0250aaf392da3"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "6337038fe1fe6bbe1b9f252ab678ee575859190bab6f0f246f4061824eb40875"
     }
   }
 }

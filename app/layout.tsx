@@ -6,6 +6,21 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ClerkProvider } from '@clerk/nextjs'
 import ConvexClientProvider from '@/components/ConvexClientProvider'
 
+// For adding custom fonts with other frameworks, see:
+// https://tailwindcss.com/docs/font-family
+import { Inter, JetBrains_Mono } from "next/font/google";
+
+const fontSans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+});
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +45,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased overscroll-none`}
+  
+        className={`${fontSans.variable} ${fontMono.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"

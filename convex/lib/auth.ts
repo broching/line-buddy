@@ -22,19 +22,69 @@ export async function requireUser(ctx: QueryCtx | MutationCtx) {
 // orgRole field takes precedence; falls back to legacy isAdmin + ownerId check.
 export function computeOrgRole(
   membership: { orgRole?: "owner" | "admin" | "member" | null; isAdmin?: boolean | null; userId: Id<"users"> },
-  orgOwnerId: Id<"users">
+  orgOwnerId: Id<"users"> | undefined
 ): "owner" | "admin" | "member" {
   if (membership.orgRole) return membership.orgRole;
-  if (membership.userId === orgOwnerId) return "owner";
+  if (orgOwnerId && membership.userId === orgOwnerId) return "owner";
   return membership.isAdmin !== false ? "admin" : "member";
 }
 
 // Throws UNAUTHORIZED if user is not an active org member.
+// Primary auth: JWT org_id (Clerk organization context) → maps to clerkOrgId on the org.
+// Fallback: direct membership table lookup (for legacy sessions or users added via addByEmail).
 export async function requireMembership(
   ctx: QueryCtx | MutationCtx,
   organizationId: Id<"organizations">
 ) {
   const user = await requireUser(ctx);
+  const identity = await ctx.auth.getUserIdentity();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clerkOrgId = (identity as any)?.org_id as string | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clerkOrgRole = (identity as any)?.org_role as string | undefined;
+
+  if (clerkOrgId) {
+    // JWT carries active Clerk org — find matching Convex org
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (!org || org._id !== organizationId) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authorized for this organization" });
+    }
+
+    // Check Convex membership for role info
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("byOrgAndUser", (q) =>
+        q.eq("organizationId", organizationId).eq("userId", user._id)
+      )
+      .unique();
+
+    if (membership?.isActive) {
+      return { user, membership };
+    }
+
+    // Membership not yet synced (webhook race condition) — derive from JWT
+    const orgRole: "owner" | "admin" | "member" =
+      user._id === org.ownerId ? "owner" : clerkOrgRole === "org:admin" ? "admin" : "member";
+    return {
+      user,
+      membership: {
+        _id: "pending" as unknown as Id<"memberships">,
+        _creationTime: 0,
+        organizationId,
+        userId: user._id,
+        orgRole,
+        isAdmin: orgRole !== "member",
+        isActive: true,
+        invitedBy: user._id,
+        joinedAt: Date.now(),
+      },
+    };
+  }
+
+  // Fallback: no Clerk org in JWT — check membership table directly
   const membership = await ctx.db
     .query("memberships")
     .withIndex("byOrgAndUser", (q) =>

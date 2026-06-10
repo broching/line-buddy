@@ -106,30 +106,34 @@ export default function AnalyticsPage({
       </div>
 
       {/* ── Credit & storage usage ───────────────────────────────────────────── */}
-      <CreditUsageCards organizationId={org._id} />
+      <CreditUsageCards organizationId={org._id} topUpUrl={`/dashboard/${orgSlug}/settings/billing`} />
 
       {/* ── Top metric cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          icon={<IconFolderOpen className="size-4 text-blue-500" />}
+          icon={<IconFolderOpen className="size-4 text-blue-600 dark:text-blue-400" />}
+          iconBg="bg-blue-500/10"
           label="Total projects"
           value={summary.projects.total}
           sub={`${summary.projects.active} active`}
         />
         <StatCard
-          icon={<IconCircleCheck className="size-4 text-green-500" />}
+          icon={<IconCircleCheck className="size-4 text-green-600 dark:text-green-400" />}
+          iconBg="bg-green-500/10"
           label="Completion rate"
           value={`${completionRate}%`}
           sub={`${summary.projects.completed} completed`}
         />
         <StatCard
-          icon={<IconMessage2 className="size-4 text-violet-500" />}
+          icon={<IconMessage2 className="size-4 text-violet-600 dark:text-violet-400" />}
+          iconBg="bg-violet-500/10"
           label="Messages (14d)"
           value={summary.messages.last14Days}
           sub="in LINE groups"
         />
         <StatCard
-          icon={<IconBrain className="size-4 text-sky-500" />}
+          icon={<IconBrain className="size-4 text-sky-600 dark:text-sky-400" />}
+          iconBg="bg-sky-500/10"
           label="AI extraction rate"
           value={`${summary.messages.extractionRate}%`}
           sub={`${summary.messages.extractedCount} processed`}
@@ -190,34 +194,38 @@ export default function AnalyticsPage({
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Projects by status</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-center">
+          <CardContent>
             {projectPieData.length === 0 ? (
-              <p className="py-10 text-sm text-muted-foreground">No projects yet</p>
+              <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
+                No projects yet
+              </div>
             ) : (
-              <PieChart width={260} height={180}>
-                <Pie
-                  data={projectPieData}
-                  cx={90}
-                  cy={80}
-                  innerRadius={44}
-                  outerRadius={70}
-                  dataKey="value"
-                  paddingAngle={2}
-                >
-                  {projectPieData.map((entry) => (
-                    <Cell key={entry.name} fill={PROJECT_COLORS[entry.name] ?? "#94a3b8"} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Legend
-                  layout="vertical"
-                  align="right"
-                  verticalAlign="middle"
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 12 }}
-                />
-              </PieChart>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={projectPieData}
+                    cx="40%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={78}
+                    dataKey="value"
+                    paddingAngle={2}
+                  >
+                    {projectPieData.map((entry) => (
+                      <Cell key={entry.name} fill={PROJECT_COLORS[entry.name] ?? "#94a3b8"} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Legend
+                    layout="vertical"
+                    align="right"
+                    verticalAlign="middle"
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -226,34 +234,38 @@ export default function AnalyticsPage({
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Reminder delivery</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-center">
+          <CardContent>
             {reminderPieData.length === 0 ? (
-              <p className="py-10 text-sm text-muted-foreground">No reminders yet</p>
+              <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
+                No reminders yet
+              </div>
             ) : (
-              <PieChart width={260} height={180}>
-                <Pie
-                  data={reminderPieData}
-                  cx={90}
-                  cy={80}
-                  innerRadius={44}
-                  outerRadius={70}
-                  dataKey="value"
-                  paddingAngle={2}
-                >
-                  {reminderPieData.map((entry) => (
-                    <Cell key={entry.name} fill={REMINDER_COLORS[entry.name] ?? "#94a3b8"} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Legend
-                  layout="vertical"
-                  align="right"
-                  verticalAlign="middle"
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 12 }}
-                />
-              </PieChart>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={reminderPieData}
+                    cx="40%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={78}
+                    dataKey="value"
+                    paddingAngle={2}
+                  >
+                    {reminderPieData.map((entry) => (
+                      <Cell key={entry.name} fill={REMINDER_COLORS[entry.name] ?? "#94a3b8"} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Legend
+                    layout="vertical"
+                    align="right"
+                    verticalAlign="middle"
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -270,21 +282,27 @@ function StatCard({
   label,
   value,
   sub,
+  iconBg = "bg-muted",
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   sub?: string;
+  iconBg?: string;
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">{label}</p>
+            <div className="text-2xl font-bold mt-1">{value}</div>
+            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+          <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
+            {icon}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

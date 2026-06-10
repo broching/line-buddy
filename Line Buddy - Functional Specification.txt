@@ -1,0 +1,505 @@
+================================================================================
+                    LINE BUDDY — FUNCTIONAL SPECIFICATION
+================================================================================
+
+Document Version : 1.0
+Date             : June 10, 2026
+Status           : For Customer Review and Acceptance
+
+================================================================================
+1. PURPOSE AND SCOPE
+================================================================================
+
+This document defines the functional requirements and delivered capabilities of
+Line Buddy, an AI-powered workflow CRM that operates inside LINE group chats. It
+serves as the agreed-upon scope of work between the Service Provider and the
+Customer, and forms the basis for acceptance testing and sign-off.
+
+================================================================================
+2. SYSTEM OVERVIEW
+================================================================================
+
+Line Buddy connects an organization's LINE group chats to a structured workflow
+engine. An AI pipeline monitors conversations inside connected groups, extracts
+relevant data points, and progresses customer or project workflows through
+predefined stages — without requiring participants to change how they communicate
+on LINE.
+
+The platform provides a web-based dashboard for managing templates, tracking
+projects, reviewing conversations, and analyzing team performance.
+
+Core Principle:
+  The AI extracts data. The workflow engine makes deterministic decisions.
+  AI never changes project state directly — all stage transitions are rule-based
+  or manually confirmed.
+
+================================================================================
+3. PLATFORM ACCESS
+================================================================================
+
+3.1  Authentication
+     - User login and registration managed via Clerk (email/password, social
+       login, multi-factor authentication as per Clerk's standard offering)
+     - Sessions expire and require re-authentication per Clerk's security policy
+
+3.2  Multi-Organization Support
+     - A single user account may belong to multiple organizations
+     - Each organization is fully isolated; data from one organization is never
+       visible to another
+     - Users may switch between organizations without logging out
+
+3.3  User Roles
+
+     Role       Description
+     --------   --------------------------------------------------------------
+     Owner      Full access. Cannot be removed. Transfers on explicit role
+                assignment only.
+     Admin      Full operational access including member management, settings,
+                and billing.
+     Member     Operational access (projects, templates, groups). No member
+                management or billing.
+
+================================================================================
+4. ORGANIZATION MANAGEMENT
+================================================================================
+
+4.1  Organization Creation
+     - Organizations are created via Clerk's organization creation flow
+     - Each organization receives a unique URL slug (e.g. /dashboard/acme-corp/)
+     - Organization name is editable by Admins; URL slug is read-only after
+       creation
+
+4.2  Organization Profile
+     - Upload a custom profile image (PNG, JPG, GIF; max 5 MB; stored securely)
+     - Remove profile image at any time
+
+4.3  Member Management
+     - Admins may invite registered users by email address
+     - Seat limits apply based on the active billing plan
+     - Assignable roles: Admin or Member (Owner is assigned by an existing Owner)
+     - Admins may remove members or change their role at any time
+     - The Owner cannot be removed without first transferring the Owner role to
+       another member
+
+================================================================================
+5. BILLING AND SUBSCRIPTIONS
+================================================================================
+
+5.1  Plans
+     - A Free tier is available with limited credits and one seat
+     - Paid plans unlock AI credits, storage quota, and additional seats
+     - Plans are subscribed at the organization level; all members benefit
+
+5.2  AI Credits
+     - AI credits are consumed each time the AI pipeline processes a message
+       batch from a connected LINE group
+     - Credit balance, usage this period, and reset date are visible on the
+       Billing dashboard
+     - Subscription credits do not carry over between billing periods
+       (Stripe top-up credits are additive — see 5.3)
+
+5.3  Credit Top-Ups (Stripe)
+     - Administrators may purchase one-time credit packs via Stripe Checkout
+     - Available pack sizes: 1,000 / 5,000 / 15,000 / 50,000 credits
+     - Top-up credits are added to the balance immediately after successful
+       payment
+     - Top-up credits do not expire within the active subscription period
+
+5.4  Auto-Recharge
+     - Admins may enable automatic credit recharge when the balance drops below
+       a configurable threshold
+     - Selectable recharge pack: 1,000 / 5,000 / 15,000 / 50,000 credits
+     - Optional monthly spend cap (SGD) prevents unexpected charges; recharge
+       stops once the cap is reached for the calendar month
+
+5.5  Transaction History
+     - The Billing dashboard displays the last 20 credit transactions showing:
+       type, amount, balance-after, and date
+
+5.6  Subscription Management
+     - Plan changes and cancellations are managed via Clerk's organization
+       billing portal, accessible from the Billing settings page
+
+================================================================================
+6. LINE INTEGRATION
+================================================================================
+
+6.1  Channel Configuration
+     - Each organization configures one LINE Messaging API channel by providing:
+         - Channel Access Token
+         - Channel Secret
+     - Credentials are stored encrypted at rest using server-side encryption
+
+6.2  Group Chat Connection
+     - LINE group chats are connected via a /connect command issued inside the
+       LINE group by an authorized member
+     - Once connected, the group appears on the dashboard and is ready for
+       project assignment
+     - Group chats may be disconnected from the dashboard at any time
+
+6.3  Supported LINE Events
+
+     Event               Behavior
+     ----------------    -------------------------------------------------------
+     Text message        Stored, batched, and processed by the AI pipeline
+     Image / File        Stored; metadata captured; not parsed by AI
+     Sticker             Logged; not processed by AI
+     Bot joins group     Group registered automatically in the dashboard
+     Bot leaves group    Group marked inactive in the dashboard
+
+6.4  Message Feed
+     - All messages in a connected group are visible in the dashboard in
+       chronological order
+     - Bot messages sent via the dashboard are displayed inline with group
+       messages
+     - The dashboard member who sent a bot message is identified in the feed
+
+================================================================================
+7. WORKFLOW TEMPLATES
+================================================================================
+
+7.1  Overview
+     A Workflow Template defines the ordered sequence of stages a project must
+     pass through. Templates are reusable across multiple projects.
+
+7.2  Template Management
+     - Admins may create, edit, and archive templates
+     - Archiving a template does not affect projects already using it
+     - Template snapshots are taken at project creation — editing a template
+       after a project has started does NOT change that project's configuration
+
+7.3  Stage Configuration
+     Each stage within a template includes:
+
+     Property                Description
+     ----------------------  ---------------------------------------------------
+     Name                    Stage label displayed in the dashboard
+     Description             Optional explanatory text
+     Required Fields         Structured data the AI or team must collect
+     Completion Rule         "All required fields filled" / "Manual" / "Custom"
+     Responsible Role        The team role accountable for this stage
+     Stage Reminder Delay    Duration after activation before reminder fires
+                             (0 = disabled)
+     Stage Actions           Automated messages sent to the LINE group or team
+                             members on stage completion
+
+7.4  Required Field Types
+
+     Type        Description
+     --------    --------------------------------------------------------------
+     Text        Free-form text input
+     Number      Numeric value
+     Date        Calendar date
+     Select      Single choice from a predefined list of options
+     File        File attachment reference
+
+     Each field may additionally configure:
+       - Responsible Roles         Which LINE group members fill this field
+       - Reminder Delay            Time after stage activation to send reminder
+       - Reminder Message          Custom reminder text for this field
+       - Max Reminder Count        Maximum number of reminders to send
+       - AI Instructions           Hints that improve extraction accuracy
+       - AI Examples               Example values to guide the model
+
+================================================================================
+8. PROJECTS
+================================================================================
+
+8.1  Project Creation
+     - Projects are created by linking a connected LINE group to a workflow
+       template
+     - A project has a name and an optional description
+     - Multiple projects may be active simultaneously within the same LINE group
+
+8.2  Project Lifecycle
+
+     Status       Description
+     ----------   -------------------------------------------------------------
+     Active        Project is progressing through stages; AI is active
+     Paused        Progress halted; reminders suspended; resumable at any time
+     Completed     All stages have been finished
+     Archived      Removed from active views; all data retained
+
+8.3  Stage Progression
+     - The project starts at Stage 1 on creation
+     - A stage advances automatically when its completion rule is satisfied
+       (e.g. all required fields filled)
+     - Admins may advance or skip a stage manually from the dashboard
+     - Skipped stages are recorded with a reason
+     - On stage completion, configured Stage Actions execute (LINE group message
+       or private message to assigned roles)
+
+8.4  Field Collection
+     - Fields can be filled automatically by the AI from LINE messages
+     - Fields can be filled manually by dashboard users at any time
+     - Fields from any stage — including already-completed stages — can be
+       updated (e.g. "Actually change the delivery address to Oak St 12")
+
+8.5  Project Views
+     - List view:   Tabular list with status, current stage, and group
+     - Kanban view: Projects grouped into status columns
+
+================================================================================
+9. AI PIPELINE
+================================================================================
+
+9.1  Overview
+     The AI pipeline activates automatically after a 10-second batching window
+     following each incoming message in a connected group. It processes the
+     message batch in four sequential steps.
+
+9.2  Pipeline Steps
+
+     Step    Function
+     ------  -----------------------------------------------------------------
+     1       Intent Classification — determines whether the message is filling
+             a stage field, asking a product question, both, or neither
+     2       Project Routing — identifies which active project the message
+             refers to (via explicit tag, user context, or AI inference)
+     3       Field Extraction — extracts values for relevant fields across any
+             stage of the identified project
+     4       Product Q&A (RAG) — if intent is a product query, retrieves
+             content from Knowledge Sources and replies via the LINE bot
+
+9.3  Field Extraction Behavior
+     - Extracted field values include a confidence score
+     - Extraction targets fields across ALL stages (active and completed),
+       enabling retroactive corrections
+     - The AI does NOT change stage status or advance the project; this is
+       handled deterministically by the workflow engine after extraction
+
+9.4  Project Routing Rules (in priority order)
+     1. Explicit tag    Message contains #project-name  →  high confidence
+     2. User context    Based on the sender's recent conversation history
+     3. AI inference    Implicit references resolved using conversation context
+     4. Ambiguous       If confidence is below threshold, the bot asks the
+                        group which project the message refers to
+
+9.5  AI Model
+     - Powered by Google Gemini 2.5 Flash Lite
+     - Token usage is tracked per message batch and deducted from the
+       organization's AI credit balance
+
+9.6  AI Traces
+     - Every pipeline run generates a trace record capturing: step names, token
+       counts, processing durations, and outcome
+     - Traces are accessible per-message for debugging and auditing purposes
+
+================================================================================
+10. KNOWLEDGE SOURCES (RAG)
+================================================================================
+
+10.1 Document Upload
+     - Admins may upload documents (PDF, TXT) as Knowledge Sources
+     - Documents are automatically chunked, embedded, and stored in a vector
+       index
+     - File size contributes toward the organization's storage quota
+
+10.2 Template Linking
+     - Knowledge Sources may be linked to one or more Workflow Templates
+     - When the AI identifies a product question in a group using a linked
+       template, it retrieves relevant document chunks and generates an answer
+     - The answer is delivered as a bot reply to the LINE group
+
+10.3 Storage Quota
+     - Knowledge Source storage is tracked per organization and visible on the
+       Billing dashboard
+     - Storage limit is determined by the active billing plan
+
+================================================================================
+11. TEAMS AND ROLE MAPPINGS
+================================================================================
+
+11.1 Teams
+     - Each organization has configurable teams
+     - Default teams created on setup: "Deye Team" and "Customer Team"
+     - Teams group related roles and are used in template assignment and
+       reminder targeting
+
+11.2 Roles
+     - Each team has configurable roles (e.g. Owner, Engineer, Business Analyst,
+       Site Contact, Decision Maker)
+     - Roles are referenced in:
+         - Workflow stage responsible party assignment
+         - Per-field reminder targeting
+         - Stage actions (send message to role)
+
+11.3 LINE User Role Mapping
+     - Dashboard admins may map specific LINE user IDs within a group to a team
+       role (e.g. "John's LINE account  →  Engineer / Deye Team")
+     - This mapping is used by the AI to infer responsibility and target
+       field-level reminders to the correct LINE users
+
+================================================================================
+12. REMINDERS
+================================================================================
+
+12.1 Stage-Level Reminders
+     - When a stage becomes active, a reminder is scheduled per the template's
+       configured delay
+     - The reminder is sent to the LINE group when the delay elapses and the
+       stage remains incomplete
+     - Stage reminders are automatically cancelled when the stage is completed,
+       skipped, or the project is paused or archived
+
+12.2 Field-Level Reminders
+     - Fields with a configured responsible role and reminder delay generate
+       individual reminders targeted to those roles
+     - Each field reminder tracks send count up to the configured maximum
+     - Field reminders are cancelled when the field is filled or the stage
+       advances
+
+12.3 Manual Reminders
+     - Dashboard users may schedule ad-hoc reminders for any active project
+       stage
+     - Manual reminders support a custom message and target role(s)
+
+================================================================================
+13. DASHBOARD — GROUP CHAT VIEW
+================================================================================
+
+- Split-panel layout:
+    Left panel   LINE message feed for the selected group
+    Right panel  Project cards for all projects in that group
+
+- Each project card has three tabs:
+
+    Stages      Current stage, field completion status, manual field fill,
+                stage advance and skip controls
+
+    Roles       LINE user to role mappings for this group
+
+    Reminders   Scheduled, sent, and cancelled reminders for the project
+
+- Dashboard users may compose and send messages to the LINE group directly
+  from the message feed panel
+
+================================================================================
+14. ANALYTICS
+================================================================================
+
+The Analytics dashboard provides aggregate metrics for the organization:
+
+  Metric                   Description
+  -----------------------  ---------------------------------------------------
+  Total projects           Count of all projects across all statuses
+  Completion rate          Percentage of projects that have been completed
+  Messages (14 days)       Total incoming messages in the last 14 days
+  AI extraction rate       Percentage of processed messages that resulted in
+                           at least one field being extracted
+  Daily message chart      Bar chart of messages per day over 14 days
+  Projects by status       Donut chart — Active / Completed / Paused / Archived
+  Reminder delivery        Donut chart — Sent / Scheduled / Failed / Cancelled
+
+================================================================================
+15. ACTIVITY LOG
+================================================================================
+
+- Immutable, append-only audit log of all organization events
+- Captured events include:
+    Project created, stage advanced, stage skipped, project completed,
+    project archived, project paused/resumed, member added, member removed,
+    LINE credentials updated
+- Each entry shows: event type, actor name, and timestamp
+- Paginated; older entries are loadable on demand
+
+================================================================================
+16. OUT OF SCOPE
+================================================================================
+
+The following are explicitly NOT included in this specification:
+
+  - LINE individual/direct messaging (only group chats are supported)
+  - Multi-language AI extraction (accuracy may vary for non-English content;
+    the AI operates on the language of the messages as-is)
+  - Custom AI model selection or model fine-tuning
+  - Mobile native applications (iOS/Android); the dashboard is a responsive
+    web application only
+  - Email or SMS notifications (all automated notifications are delivered
+    via LINE)
+  - Data export or CSV download functionality
+  - Custom domain hosting
+  - SAML / SSO enterprise login
+  - SLA guarantees or uptime commitments beyond the hosting provider's
+    standard published terms
+
+================================================================================
+17. TECHNICAL CONSTRAINTS AND NOTES
+================================================================================
+
+  Item                        Detail
+  --------------------------  -------------------------------------------------
+  LINE channel type           Messaging API only (not LINE Official Account
+                              free tier)
+  AI processing latency       10-second batch window plus AI processing time
+                              (~5–30 seconds); near real-time, not instant
+  Webhook reliability         Dependent on LINE Messaging API and hosting
+                              platform uptime
+  Credit deduction timing     Credits are deducted on AI pipeline completion,
+                              not on message receipt
+  Template immutability       Editing a template does not retroactively affect
+                              projects that are already running
+  Browser support             Modern evergreen browsers (Chrome, Safari,
+                              Firefox, Edge). Internet Explorer not supported.
+
+================================================================================
+18. ACCEPTANCE CRITERIA
+================================================================================
+
+The system shall be considered accepted when the Customer has verified each of
+the following:
+
+  [ ] Organization created and members invited with correct roles
+  [ ] LINE channel credentials accepted and webhook receives messages from a
+      test group chat
+  [ ] Workflow template created with at least 2 stages and required fields
+  [ ] Project created, AI processes a test message, and at least one field
+      value is extracted and displayed on the dashboard
+  [ ] Stage advances automatically when all required fields are filled
+  [ ] Stage-level reminder delivered to the LINE group after the configured
+      delay
+  [ ] Knowledge Source (PDF or TXT) uploaded, linked to a template, and a
+      product question answered by the bot in the LINE group
+  [ ] Analytics dashboard displays accurate project and message metrics
+  [ ] Billing plan subscribed and AI credits visible on the Billing page
+  [ ] Credit top-up purchased via Stripe and reflected in the credit balance
+
+================================================================================
+19. SIGNATURES
+================================================================================
+
+By signing below, the Customer confirms they have read, understood, and agreed
+to the functional scope defined in this document. Any features or changes
+requested after the date of signature are subject to a separate change request
+process and may incur additional cost and timeline adjustments.
+
+
+CUSTOMER
+
+  Name          : ___________________________________________
+
+  Title         : ___________________________________________
+
+  Organization  : ___________________________________________
+
+  Signature     : ___________________________________________
+
+  Date          : ___________________________________________
+
+
+SERVICE PROVIDER
+
+  Name          : ___________________________________________
+
+  Title         : ___________________________________________
+
+  Organization  : ___________________________________________
+
+  Signature     : ___________________________________________
+
+  Date          : ___________________________________________
+
+
+================================================================================
+          END OF DOCUMENT — LINE BUDDY FUNCTIONAL SPECIFICATION v1.0
+================================================================================

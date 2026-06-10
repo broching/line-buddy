@@ -10,7 +10,6 @@ import {
   IconActivity,
   IconArrowMoveRight,
   IconChartLine,
-  IconCircleCheck,
   IconFolderOpen,
   IconFolderPlus,
   IconMessage2,
@@ -67,30 +66,34 @@ export default function OverviewPage({
       </div>
 
       {/* ── Credit & storage usage ───────────────────────────────────────────── */}
-      <CreditUsageCards organizationId={org._id} />
+      <CreditUsageCards organizationId={org._id} topUpUrl={`/dashboard/${orgSlug}/settings/billing`} />
 
       {/* ── Metric cards ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Team members"
           value={members?.length ?? "—"}
-          icon={<IconUsers className="size-4 text-muted-foreground" />}
+          icon={<IconUsers className="size-4" />}
+          color="teal"
         />
         <MetricCard
           title="Active projects"
           value={activeProjects.length}
           sub={completedProjects.length > 0 ? `${completedProjects.length} completed` : undefined}
-          icon={<IconFolderOpen className="size-4 text-muted-foreground" />}
+          icon={<IconFolderOpen className="size-4" />}
+          color="blue"
         />
         <MetricCard
           title="Connected groups"
           value={groups?.filter((g) => g.isActive).length ?? "—"}
-          icon={<IconMessage2 className="size-4 text-muted-foreground" />}
+          icon={<IconMessage2 className="size-4" />}
+          color="violet"
         />
         <MetricCard
           title="Templates"
           value={templates?.length ?? "—"}
-          icon={<IconTemplate className="size-4 text-muted-foreground" />}
+          icon={<IconTemplate className="size-4" />}
+          color="amber"
         />
       </div>
 
@@ -108,22 +111,29 @@ export default function OverviewPage({
           </CardHeader>
           <CardContent>
             {activeProjects.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No active projects yet
-              </p>
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <IconFolderPlus className="size-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">No active projects yet</p>
+                <Link
+                  href={`/dashboard/${orgSlug}/projects`}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Create your first project
+                </Link>
+              </div>
             ) : (
               <div className="flex flex-col divide-y">
                 {activeProjects.slice(0, 5).map((p) => (
                   <Link
                     key={p._id}
                     href={`/dashboard/${orgSlug}/projects/${p._id}`}
-                    className="flex items-center justify-between py-2.5 text-sm hover:text-primary transition-colors"
+                    className="flex items-center justify-between py-2.5 text-sm hover:text-primary transition-colors group"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <IconFolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
+                      <IconFolderOpen className="size-3.5 shrink-0 text-blue-500" />
                       <span className="truncate">{p.name}</span>
                     </div>
-                    <Badge variant="secondary" className="text-xs shrink-0">
+                    <Badge className="text-xs shrink-0 bg-blue-500/10 text-blue-600 border-blue-500/20">
                       Stage {p.currentStageOrder}
                     </Badge>
                   </Link>
@@ -180,18 +190,19 @@ export default function OverviewPage({
       {/* ── Quick links ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Analytics", icon: IconChartLine, href: `analytics` },
-          { label: "Activity log", icon: IconActivity, href: `activity` },
-          { label: "Templates", icon: IconTemplate, href: `templates` },
-          { label: "Members", icon: IconUsers, href: `members` },
+          { label: "Analytics", icon: IconChartLine, href: `analytics`, color: "text-blue-500" },
+          { label: "Activity log", icon: IconActivity, href: `activity`, color: "text-violet-500" },
+          { label: "Templates", icon: IconTemplate, href: `templates`, color: "text-amber-500" },
+          { label: "Members", icon: IconUsers, href: `members`, color: "text-teal-500" },
         ].map((item) => (
           <Link
             key={item.label}
             href={`/dashboard/${orgSlug}/${item.href}`}
-            className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+            className="group flex items-center gap-2.5 rounded-lg border bg-card px-3.5 py-3 text-sm font-medium hover:bg-muted/50 hover:border-primary/30 transition-colors"
           >
-            <item.icon className="size-4 text-muted-foreground" />
-            {item.label}
+            <item.icon className={`size-4 ${item.color}`} />
+            <span className="flex-1">{item.label}</span>
+            <IconArrowMoveRight className="size-3.5 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </Link>
         ))}
       </div>
@@ -244,26 +255,41 @@ function describeEvent(log: { eventType: string; payload?: Record<string, unknow
 
 // ─── Shared components ────────────────────────────────────────────────────────
 
+const METRIC_COLOR_MAP: Record<string, { bg: string; fg: string }> = {
+  blue:   { bg: "bg-blue-500/10",   fg: "text-blue-600 dark:text-blue-400" },
+  teal:   { bg: "bg-teal-500/10",   fg: "text-teal-600 dark:text-teal-400" },
+  violet: { bg: "bg-violet-500/10", fg: "text-violet-600 dark:text-violet-400" },
+  amber:  { bg: "bg-amber-500/10",  fg: "text-amber-600 dark:text-amber-400" },
+  green:  { bg: "bg-green-500/10",  fg: "text-green-600 dark:text-green-400" },
+};
+
 function MetricCard({
   title,
   value,
   icon,
   sub,
+  color = "blue",
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
   sub?: string;
+  color?: keyof typeof METRIC_COLOR_MAP;
 }) {
+  const { bg, fg } = METRIC_COLOR_MAP[color] ?? METRIC_COLOR_MAP.blue;
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <div className="text-2xl font-bold mt-1">{value}</div>
+            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+          <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${bg} ${fg}`}>
+            {icon}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireMembership, computeOrgRole } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
@@ -227,5 +227,97 @@ export const setAdmin = mutation({
       entityId: membershipId,
       payload: { isAdmin },
     });
+  },
+});
+
+// ─── Internal: Clerk membership sync ─────────────────────────────────────────
+
+export const syncFromClerk = internalMutation({
+  args: {
+    clerkOrgId: v.string(),
+    clerkUserId: v.string(),
+    role: v.string(), // "org:admin" | "org:member"
+  },
+  handler: async (ctx, { clerkOrgId, clerkUserId, role }) => {
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (!org) {
+      console.warn(`[membership.syncFromClerk] Org not found for clerkOrgId ${clerkOrgId}`);
+      return;
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", clerkUserId))
+      .unique();
+    if (!user) {
+      console.warn(`[membership.syncFromClerk] User not found for clerkUserId ${clerkUserId}`);
+      return;
+    }
+
+    const orgRole: "owner" | "admin" | "member" =
+      user._id === org.ownerId ? "owner" : role === "org:admin" ? "admin" : "member";
+
+    const existing = await ctx.db
+      .query("memberships")
+      .withIndex("byOrgAndUser", (q) =>
+        q.eq("organizationId", org._id).eq("userId", user._id)
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        isActive: true,
+        orgRole,
+        isAdmin: orgRole !== "member",
+      });
+    } else {
+      await ctx.db.insert("memberships", {
+        organizationId: org._id,
+        userId: user._id,
+        orgRole,
+        isAdmin: orgRole !== "member",
+        invitedBy: user._id,
+        joinedAt: Date.now(),
+        isActive: true,
+      });
+    }
+  },
+});
+
+export const removeFromClerk = internalMutation({
+  args: {
+    clerkOrgId: v.string(),
+    clerkUserId: v.string(),
+  },
+  handler: async (ctx, { clerkOrgId, clerkUserId }) => {
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+      .unique();
+    if (!org) return;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", clerkUserId))
+      .unique();
+    if (!user) return;
+
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("byOrgAndUser", (q) =>
+        q.eq("organizationId", org._id).eq("userId", user._id)
+      )
+      .unique();
+    if (!membership) return;
+
+    if (computeOrgRole(membership, org.ownerId) === "owner") {
+      console.warn(`[membership.removeFromClerk] Skipping owner removal for org ${org._id}`);
+      return;
+    }
+
+    await ctx.db.patch(membership._id, { isActive: false });
   },
 });
