@@ -66,6 +66,8 @@ const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import Link from "next/link";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { CreditBadge } from "@/components/billing/credit-usage";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,6 +229,7 @@ export default function GroupDetailPage({
   const activeProjectCount = projects.filter((p) => p.status === "active").length;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div
       className="-my-4 md:-my-6 flex flex-col overflow-hidden"
       style={{ height: "calc(100dvh - 48px)" }}
@@ -273,6 +276,7 @@ export default function GroupDetailPage({
             <IconMessage2 className="size-3.5" />
             {messages.length} msg{messages.length !== 1 ? "s" : ""}
           </span>
+          <CreditBadge organizationId={org._id} />
         </div>
       </div>
 
@@ -437,6 +441,7 @@ export default function GroupDetailPage({
         )}
       </div>
     </div>
+    </PaywallGate>
   );
 }
 

@@ -57,6 +57,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -221,6 +222,7 @@ export default function ProjectDetailPage({
   const isCompleted = project.status === "completed" || project.status === "archived";
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-0 px-4 lg:px-6">
       {ConfirmDialogNode}
 
@@ -438,6 +440,7 @@ export default function ProjectDetailPage({
         </TabsContent>
       </Tabs>
     </div>
+    </PaywallGate>
   );
 }
 

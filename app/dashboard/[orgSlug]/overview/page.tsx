@@ -18,6 +18,8 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import { CreditUsageCards } from "@/components/billing/credit-usage";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 export default function OverviewPage({
   params,
@@ -55,6 +57,7 @@ export default function OverviewPage({
   const completedProjects = projects?.filter((p) => p.status === "completed") ?? [];
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div>
         <h2 className="text-2xl font-bold">{org.name}</h2>
@@ -62,6 +65,9 @@ export default function OverviewPage({
           Welcome back. Here's what's happening.
         </p>
       </div>
+
+      {/* ── Credit & storage usage ───────────────────────────────────────────── */}
+      <CreditUsageCards organizationId={org._id} />
 
       {/* ── Metric cards ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -190,6 +196,7 @@ export default function OverviewPage({
         ))}
       </div>
     </div>
+    </PaywallGate>
   );
 }
 

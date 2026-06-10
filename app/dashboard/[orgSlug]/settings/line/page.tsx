@@ -22,6 +22,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 export default function LineSettingsPage({
   params,
@@ -81,6 +82,7 @@ export default function LineSettingsPage({
     : null;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6 max-w-2xl">
       <div>
         <h2 className="text-xl font-semibold">LINE Integration</h2>
@@ -209,5 +211,6 @@ export default function LineSettingsPage({
         </CardContent>
       </Card>
     </div>
+    </PaywallGate>
   );
 }

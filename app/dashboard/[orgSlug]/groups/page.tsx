@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { useEffect } from "react";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 type GroupWithStats = {
   _id: string;
@@ -70,6 +71,7 @@ export default function GroupsPage({
   const activeCount = groups.filter((g) => g.isActive).length;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-0 h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -131,6 +133,7 @@ export default function GroupsPage({
         orgId={org._id}
       />
     </div>
+    </PaywallGate>
   );
 }
 

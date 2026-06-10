@@ -13,6 +13,7 @@ import type * as aiChains from "../aiChains.js";
 import type * as aiTraces from "../aiTraces.js";
 import type * as analytics from "../analytics.js";
 import type * as auditLogs from "../auditLogs.js";
+import type * as billing from "../billing.js";
 import type * as clerkWebhook from "../clerkWebhook.js";
 import type * as connectTokens from "../connectTokens.js";
 import type * as fileStorage from "../fileStorage.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   aiTraces: typeof aiTraces;
   analytics: typeof analytics;
   auditLogs: typeof auditLogs;
+  billing: typeof billing;
   clerkWebhook: typeof clerkWebhook;
   connectTokens: typeof connectTokens;
   fileStorage: typeof fileStorage;

@@ -64,6 +64,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAction } from "convex/react";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 import {
   IconDatabase,
   IconUpload,
@@ -340,6 +341,7 @@ export default function EditTemplatePage({
   }
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-4 px-4 lg:px-6">
       {ConfirmDialogNode}
 
@@ -654,6 +656,7 @@ export default function EditTemplatePage({
         </DrawerContent>
       </Drawer>
     </div>
+    </PaywallGate>
   );
 }
 

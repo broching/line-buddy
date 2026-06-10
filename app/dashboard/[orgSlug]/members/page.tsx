@@ -15,12 +15,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { IconTrash, IconUserPlus } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
+import { PaywallGate } from "@/components/billing/paywall-gate";
+
+type OrgRole = "owner" | "admin" | "member";
+
+const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+};
+
+const ROLE_BADGE_VARIANT: Record<OrgRole, "default" | "secondary" | "outline"> = {
+  owner: "default",
+  admin: "secondary",
+  member: "outline",
+};
 
 export default function MembersPage({
   params,
@@ -38,9 +59,11 @@ export default function MembersPage({
 
   if (!org || !members) return <MembersSkeleton />;
 
-  const adminCount = members.filter((m) => m.isAdmin !== false).length;
+  const myRole = org.myRole;
+  const canManage = myRole === "owner" || myRole === "admin";
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div>
         <h2 className="text-xl font-semibold">Members</h2>
@@ -51,13 +74,14 @@ export default function MembersPage({
       </div>
 
       {ConfirmDialogNode}
-      <InviteCard orgId={org._id} />
+
+      {canManage && <InviteCard orgId={org._id} />}
 
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">Team members</CardTitle>
           <CardDescription>
-            Admins can manage templates, LINE settings, and invite others.
+            Owners manage billing. Admins can manage templates, settings, and invite others.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -67,9 +91,9 @@ export default function MembersPage({
                 key={m._id}
                 membershipId={m._id}
                 user={m.user}
-                isAdmin={m.isAdmin !== false}
+                orgRole={m.orgRole}
                 orgId={org._id}
-                isLastAdmin={m.isAdmin !== false && adminCount <= 1}
+                myRole={myRole}
                 confirm={confirmDialog}
               />
             ))}
@@ -77,13 +101,14 @@ export default function MembersPage({
         </CardContent>
       </Card>
     </div>
+    </PaywallGate>
   );
 }
 
 function InviteCard({ orgId }: { orgId: Id<"organizations"> }) {
   const addMember = useMutation(api.memberships.addByEmail);
   const [email, setEmail] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<"admin" | "member">("member");
   const [loading, setLoading] = useState(false);
 
   async function handleInvite(e: React.FormEvent) {
@@ -91,10 +116,10 @@ function InviteCard({ orgId }: { orgId: Id<"organizations"> }) {
     if (!email.trim()) return;
     setLoading(true);
     try {
-      await addMember({ organizationId: orgId, email: email.trim(), isAdmin });
+      await addMember({ organizationId: orgId, email: email.trim(), orgRole: role });
       toast.success("Member added successfully");
       setEmail("");
-      setIsAdmin(false);
+      setRole("member");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add member");
     } finally {
@@ -126,19 +151,31 @@ function InviteCard({ orgId }: { orgId: Id<"organizations"> }) {
               disabled={loading}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <Label htmlFor="admin-toggle" className="text-sm">Admin access</Label>
-              <span className="text-xs text-muted-foreground">
-                Can manage templates, LINE settings, and members
-              </span>
-            </div>
-            <Switch
-              id="admin-toggle"
-              checked={isAdmin}
-              onCheckedChange={setIsAdmin}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="invite-role">Role</Label>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as "admin" | "member")}
               disabled={loading}
-            />
+            >
+              <SelectTrigger id="invite-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">
+                  <div className="flex flex-col">
+                    <span>Member</span>
+                    <span className="text-xs text-muted-foreground">Standard dashboard access</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="admin">
+                  <div className="flex flex-col">
+                    <span>Admin</span>
+                    <span className="text-xs text-muted-foreground">Can manage templates, LINE settings, and members</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={loading || !email.trim()}>
@@ -154,25 +191,33 @@ function InviteCard({ orgId }: { orgId: Id<"organizations"> }) {
 function MemberRow({
   membershipId,
   user,
-  isAdmin,
+  orgRole,
   orgId,
-  isLastAdmin,
+  myRole,
   confirm: confirmDialog,
 }: {
   membershipId: Id<"memberships">;
   user: { name: string; email?: string } | null;
-  isAdmin: boolean;
+  orgRole: OrgRole;
   orgId: Id<"organizations">;
-  isLastAdmin: boolean;
+  myRole: OrgRole;
   confirm: ReturnType<typeof useConfirm>["confirmDialog"];
 }) {
   const removeMember = useMutation(api.memberships.remove);
-  const setAdmin = useMutation(api.memberships.setAdmin);
+  const setRole = useMutation(api.memberships.setRole);
   const [removing, setRemoving] = useState(false);
 
   const initials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
     : "?";
+
+  const canEdit =
+    (myRole === "owner" || myRole === "admin") &&
+    orgRole !== "owner"; // cannot edit owner's role
+
+  const canRemove =
+    (myRole === "owner" || myRole === "admin") &&
+    orgRole !== "owner";
 
   async function handleRemove() {
     const ok = await confirmDialog({
@@ -192,12 +237,16 @@ function MemberRow({
     }
   }
 
-  async function handleAdminToggle(checked: boolean) {
+  async function handleRoleChange(newRole: string) {
     try {
-      await setAdmin({ organizationId: orgId, membershipId, isAdmin: checked });
-      toast.success(checked ? "Admin access granted" : "Admin access removed");
+      await setRole({
+        organizationId: orgId,
+        membershipId,
+        orgRole: newRole as OrgRole,
+      });
+      toast.success(`Role changed to ${ROLE_LABELS[newRole as OrgRole]}`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to update");
+      toast.error(err instanceof Error ? err.message : "Failed to update role");
     }
   }
 
@@ -212,25 +261,36 @@ function MemberRow({
           <p className="text-xs text-muted-foreground truncate">{user.email}</p>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {isAdmin && (
-          <Badge variant="secondary" className="text-xs">Admin</Badge>
+      <div className="flex items-center gap-2">
+        {canEdit ? (
+          <Select value={orgRole} onValueChange={handleRoleChange}>
+            <SelectTrigger className="h-7 text-xs w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="member">Member</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              {myRole === "owner" && (
+                <SelectItem value="owner">Owner</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant={ROLE_BADGE_VARIANT[orgRole]} className="text-xs">
+            {ROLE_LABELS[orgRole]}
+          </Badge>
         )}
-        <Switch
-          checked={isAdmin}
-          onCheckedChange={handleAdminToggle}
-          disabled={isLastAdmin}
-          title={isLastAdmin ? "Cannot remove the last admin" : "Toggle admin"}
-        />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          onClick={handleRemove}
-          disabled={removing || isLastAdmin}
-        >
-          <IconTrash className="size-3.5" />
-        </Button>
+        {canRemove && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={handleRemove}
+            disabled={removing}
+          >
+            <IconTrash className="size-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );

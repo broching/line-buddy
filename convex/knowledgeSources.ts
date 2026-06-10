@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireMembership } from "./lib/auth";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
 // List all knowledge sources for an org
@@ -113,6 +114,14 @@ export const remove = mutation({
       try { await ctx.storage.delete(source.storageId); } catch {}
     }
 
+    // Deduct storage from billing
+    if (source.fileSizeBytes && source.fileSizeBytes > 0) {
+      await ctx.runMutation(internal.billing.deductStorageBytes, {
+        organizationId,
+        bytes: source.fileSizeBytes,
+      });
+    }
+
     await ctx.db.delete(knowledgeSourceId);
   },
 });
@@ -124,12 +133,21 @@ export const createRecord = internalMutation({
     title: v.string(),
     description: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
+    fileSizeBytes: v.optional(v.number()),
     totalChunks: v.number(),
     createdAt: v.number(),
     createdBy: v.id("users"),
   },
   handler: async (ctx, args) => {
-    return ctx.db.insert("knowledgeSources", args);
+    const id = await ctx.db.insert("knowledgeSources", args);
+    // Track storage in billing
+    if (args.fileSizeBytes && args.fileSizeBytes > 0) {
+      await ctx.runMutation(internal.billing.addStorageBytes, {
+        organizationId: args.organizationId,
+        bytes: args.fileSizeBytes,
+      });
+    }
+    return id;
   },
 });
 

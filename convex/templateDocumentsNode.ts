@@ -48,9 +48,11 @@ export const ingestDocument = action({
 
     const contentType = res.headers.get("content-type") ?? "";
     let rawText: string;
+    let fileSizeBytes = 0;
 
     if (contentType.includes("pdf")) {
       const arrayBuffer = await res.arrayBuffer();
+      fileSizeBytes = arrayBuffer.byteLength;
       const buffer = Buffer.from(arrayBuffer);
       const pdfParseModule = await import("pdf-parse");
       const pdfParse =
@@ -60,7 +62,9 @@ export const ingestDocument = action({
       const parsed = await pdfParse(buffer);
       rawText = parsed.text;
     } else {
-      rawText = await res.text();
+      const text = await res.text();
+      fileSizeBytes = Buffer.byteLength(text, "utf8");
+      rawText = text;
     }
 
     if (!rawText.trim()) throw new Error("Document is empty");
@@ -86,11 +90,12 @@ export const ingestDocument = action({
 
     const now = Date.now();
 
-    // 4. Create the org-level knowledge source record
+    // 4. Create the org-level knowledge source record (also tracks storage in billing)
     const knowledgeSourceId: Id<"knowledgeSources"> = await ctx.runMutation(internal.knowledgeSources.createRecord, {
       organizationId,
       title,
       storageId,
+      fileSizeBytes,
       totalChunks,
       createdAt: now,
       createdBy,

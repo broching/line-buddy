@@ -36,8 +36,7 @@ function getEmbeddings() {
 // ─── Token tracking callback ──────────────────────────────────────────────────
 
 function extractTokensFromOutput(output: LLMResult): { input: number; output: number } {
-  console.log('whole output:', output)
-  // Standard LangChain way: AIMessage.usage_metadata (input_tokens / output_tokens)
+  // AIMessage.usage_metadata (standard LangChain path)
   for (const gen of output.generations ?? []) {
     for (const g of gen ?? []) {
       const msg = (g as any).message;
@@ -47,7 +46,6 @@ function extractTokensFromOutput(output: LLMResult): { input: number; output: nu
           output: msg.usage_metadata.output_tokens ?? 0,
         };
       }
-      // Gemini via generationInfo
       const gi = (g as any).generationInfo;
       if (gi?.usageMetadata) {
         return {
@@ -65,6 +63,9 @@ function extractTokensFromOutput(output: LLMResult): { input: number; output: nu
       output: llmOut.usageMetadata.candidatesTokenCount ?? llmOut.usageMetadata.outputTokenCount ?? 0,
     };
   }
+  // Last resort: dump raw structure so we can see what's there
+  console.warn("[extractTokens] no token fields matched. llmOutput=", JSON.stringify(output.llmOutput ?? null),
+    "firstGen=", JSON.stringify(output.generations?.[0]?.[0] ?? null));
   return { input: 0, output: 0 };
 }
 
@@ -73,9 +74,10 @@ class TokenTracker extends BaseCallbackHandler {
   inputTokens = 0;
   outputTokens = 0;
 
-  // Only handleChatModelEnd fires for ChatGoogleGenerativeAI — avoids double-counting
-  async handleChatModelEnd(output: LLMResult) {
+  // handleLLMEnd fires for ChatGoogleGenerativeAI (handleChatModelEnd does not)
+  async handleLLMEnd(output: LLMResult) {
     const { input, output: out } = extractTokensFromOutput(output);
+    console.log(`[TokenTracker] handleLLMEnd: input=${input} output=${out}`);
     this.inputTokens += input;
     this.outputTokens += out;
   }
@@ -591,6 +593,16 @@ async function runAIPipeline(
     return;
   }
 
+  // Gate: check credits are available before running AI (don't consume yet)
+  const creditCheck = await ctx.runQuery(internal.billing.checkCanProcess, {
+    organizationId: context.organizationId,
+  });
+  if (!creditCheck.canProcess) {
+    console.log(`[aiChains] Skipping AI processing: ${creditCheck.reason}`);
+    await ctx.runMutation(internal.ai.markMessageComplete, { messageId });
+    return;
+  }
+
   // When multiple messages were batched, use the combined text; otherwise use the original
   const inputText = combinedText ?? context.text;
 
@@ -845,6 +857,25 @@ async function runAIPipeline(
     if (traces.length > 0) {
       const totalInput = traces.reduce((s, t) => s + t.inputTokens, 0);
       const totalOutput = traces.reduce((s, t) => s + t.outputTokens, 0);
+      const totalTokens = totalInput + totalOutput;
+
+      // Consume credits based on tokens: round(tokens/1000), min 1 if any tokens used
+      const creditsToConsume = totalTokens > 0
+        ? Math.max(1, Math.round(totalTokens / 1000))
+        : 0;
+
+      if (creditsToConsume > 0) {
+        try {
+          await ctx.runMutation(internal.billing.consumeCredits, {
+            organizationId: context!.organizationId,
+            amount: creditsToConsume,
+          });
+          console.log(`[aiChains] Consumed ${creditsToConsume} credit(s) for ${totalTokens} tokens`);
+        } catch (err) {
+          console.error("[aiChains] Failed to consume credits:", err);
+        }
+      }
+
       try {
         await ctx.runMutation(internal.aiTraces.store, {
           messageId,

@@ -1,5 +1,5 @@
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { transformWebhookData } from "./paymentAttemptTypes";
 
 // Verify Svix webhook signature using Web Crypto API (no Node.js required)
@@ -81,11 +81,23 @@ export const handleClerkWebhook = httpAction(async (ctx, request) => {
           clerkUserId: (event.data.id as string) ?? "",
         });
         break;
-      case "paymentAttempt.updated":
+      case "paymentAttempt.updated": {
+        const paymentData = event.data as any;
         await ctx.runMutation(api.paymentAttempts.savePaymentAttempt, {
-          paymentAttemptData: transformWebhookData(event.data as any),
+          paymentAttemptData: transformWebhookData(paymentData),
         });
+        // Activate org billing when payment succeeds
+        if (paymentData.status === "paid" && Array.isArray(paymentData.subscription_items) && paymentData.subscription_items.length > 0) {
+          const item = paymentData.subscription_items[0];
+          await ctx.runMutation(internal.billing.activateFromPayment, {
+            clerkUserId: paymentData.payer.user_id,
+            planId: item.plan.id,
+            periodStart: item.period_start,
+            periodEnd: item.period_end,
+          });
+        }
         break;
+      }
       default:
         break;
     }

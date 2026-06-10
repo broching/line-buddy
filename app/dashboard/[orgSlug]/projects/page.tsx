@@ -36,6 +36,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "@/lib/date";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
   active:    { label: "Active",    className: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-0" },
@@ -115,6 +116,7 @@ function ProjectsContent({ orgSlug }: { orgSlug: string }) {
   const activeCount = projects.filter((p) => p.status === "active").length;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-5 px-4 lg:px-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -324,6 +326,7 @@ function ProjectsContent({ orgSlug }: { orgSlug: string }) {
         />
       )}
     </div>
+    </PaywallGate>
   );
 }
 

@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 export default function KnowledgeSourcesPage({
   params,
@@ -85,11 +86,14 @@ export default function KnowledgeSourcesPage({
     }
   }
 
+  if (!org) return <div className="flex flex-col gap-6 px-4 lg:px-6"><Skeleton className="h-8 w-48" /></div>;
+
   const filtered = (sources ?? []).filter((s) =>
     s.title.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       {ConfirmDialogNode}
 
@@ -184,6 +188,7 @@ export default function KnowledgeSourcesPage({
         </div>
       )}
     </div>
+    </PaywallGate>
   );
 }
 

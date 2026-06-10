@@ -5,6 +5,7 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 import {
   IconActivity,
   IconArchive,
@@ -126,7 +127,10 @@ export default function ActivityPage({
 
   const isLoading = status === "LoadingFirstPage" || !org;
 
+  if (!org) return <ActivitySkeleton />;
+
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div>
         <h2 className="text-xl font-semibold">Activity</h2>
@@ -212,6 +216,7 @@ export default function ActivityPage({
         </div>
       )}
     </div>
+    </PaywallGate>
   );
 }
 

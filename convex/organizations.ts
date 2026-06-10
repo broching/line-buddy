@@ -1,7 +1,8 @@
 import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireUser, requireMembership } from "./lib/auth";
+import { requireUser, requireMembership, computeOrgRole } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
+import { internal } from "./_generated/api";
 
 // Default teams and their roles seeded on every new org
 const DEFAULT_TEAMS = [
@@ -85,10 +86,11 @@ export const create = mutation({
       }
     }
 
-    // Add creator as admin member
+    // Add creator as owner
     await ctx.db.insert("memberships", {
       organizationId: orgId,
       userId: user._id,
+      orgRole: "owner",
       isAdmin: true,
       invitedBy: user._id,
       joinedAt: Date.now(),
@@ -104,6 +106,9 @@ export const create = mutation({
       entityId: orgId,
       payload: { name, slug },
     });
+
+    // Initialise a free billing record for this org
+    await ctx.runMutation(internal.billing.initFreeForOrg, { organizationId: orgId, userId: user._id });
 
     return { orgId, slug };
   },
@@ -134,7 +139,13 @@ export const get = query({
       .unique();
     if (!membership?.isActive) return null;
 
-    return org;
+    const profileImageUrl = org.profileImageStorageId
+      ? await ctx.storage.getUrl(org.profileImageStorageId)
+      : null;
+
+    const myRole = computeOrgRole(membership, org.ownerId);
+
+    return { ...org, profileImageUrl, myRole };
   },
 });
 
@@ -155,8 +166,18 @@ export const listForUser = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    const orgs = await Promise.all(memberships.map((m) => ctx.db.get(m.organizationId)));
-    return orgs.filter(Boolean);
+    const results = await Promise.all(
+      memberships.map(async (m) => {
+        const org = await ctx.db.get(m.organizationId);
+        if (!org) return null;
+        const profileImageUrl = org.profileImageStorageId
+          ? await ctx.storage.getUrl(org.profileImageStorageId)
+          : null;
+        const myRole = computeOrgRole(m, org.ownerId);
+        return { ...org, profileImageUrl, myRole };
+      })
+    );
+    return results.filter(Boolean);
   },
 });
 
@@ -171,8 +192,6 @@ export const getById = internalQuery({
 });
 
 // Returns LINE credentials for a given org ID.
-// Called from the LINE webhook (public, no user auth) to verify request signatures.
-// The orgId in the webhook URL is an opaque Convex ID, limiting exposure.
 export const getLineConfig = query({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, { organizationId }) => {
@@ -194,7 +213,7 @@ export const updateLineCredentials = mutation({
   },
   handler: async (ctx, { organizationId, lineChannelAccessToken, lineChannelSecret }) => {
     const { user, membership } = await requireMembership(ctx, organizationId);
-    if (membership.isAdmin === false) throw new Error("Admin access required");
+    if (membership.isAdmin === false && membership.orgRole === "member") throw new Error("Admin access required");
     await ctx.db.patch(organizationId, {
       lineChannelAccessToken: lineChannelAccessToken.trim(),
       lineChannelSecret: lineChannelSecret.trim(),
@@ -224,6 +243,55 @@ export const update = mutation({
       entityType: "organization",
       entityId: organizationId,
       payload: { name },
+    });
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    await requireMembership(ctx, organizationId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const updateProfileImage = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, { organizationId, storageId }) => {
+    const { user } = await requireMembership(ctx, organizationId);
+    await ctx.db.patch(organizationId, { profileImageStorageId: storageId });
+    await writeAuditLog(ctx, {
+      organizationId,
+      actorId: user._id,
+      actorType: "user",
+      eventType: "organization.profileImageUpdated",
+      entityType: "organization",
+      entityId: organizationId,
+      payload: {},
+    });
+  },
+});
+
+export const removeProfileImage = mutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    const { user } = await requireMembership(ctx, organizationId);
+    const org = await ctx.db.get(organizationId);
+    if (org?.profileImageStorageId) {
+      await ctx.storage.delete(org.profileImageStorageId);
+    }
+    await ctx.db.patch(organizationId, { profileImageStorageId: undefined });
+    await writeAuditLog(ctx, {
+      organizationId,
+      actorId: user._id,
+      actorType: "user",
+      eventType: "organization.profileImageRemoved",
+      entityType: "organization",
+      entityId: organizationId,
+      payload: {},
     });
   },
 });

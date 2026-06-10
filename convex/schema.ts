@@ -22,6 +22,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(), // URL-safe unique identifier
     ownerId: v.id("users"),
+    profileImageStorageId: v.optional(v.id("_storage")),
     lineChannelAccessToken: v.optional(v.string()), // encrypted
     lineChannelSecret: v.optional(v.string()), // encrypted
     planId: v.string(), // Clerk billing plan slug
@@ -35,7 +36,8 @@ export default defineSchema({
   memberships: defineTable({
     organizationId: v.id("organizations"),
     userId: v.id("users"),
-    isAdmin: v.optional(v.boolean()), // true = can manage org settings; undefined treated as true for original owner
+    orgRole: v.optional(v.union(v.literal("owner"), v.literal("admin"), v.literal("member"))),
+    isAdmin: v.optional(v.boolean()), // legacy — kept for compat; orgRole takes precedence when set
     roles: v.optional(v.array(v.string())), // legacy field — ignore, kept for schema compat with existing documents
     invitedBy: v.id("users"),
     joinedAt: v.number(),
@@ -345,12 +347,34 @@ export default defineSchema({
     .index("byOrganizationAndTimestamp", ["organizationId", "timestamp"])
     .index("byEntityId", ["entityId"]),
 
+  // ─── Org Billing (subscription state, credits, storage per org) ─────────────
+  orgBilling: defineTable({
+    organizationId: v.id("organizations"),
+    subscriberUserId: v.optional(v.id("users")), // Clerk billing owner
+    planId: v.string(),                           // paid plan ID or "free"
+    status: v.union(
+      v.literal("active"),    // subscription live and within period
+      v.literal("past_due"),  // payment failed
+      v.literal("cancelled"), // subscription cancelled
+      v.literal("free"),      // no subscription
+    ),
+    creditsTotal: v.number(),                // 10 000 for paid, 0 for free
+    creditsUsed: v.number(),                 // consumed this billing period
+    creditsPeriodStart: v.optional(v.number()),
+    creditsPeriodEnd: v.optional(v.number()),
+    storageUsedBytes: v.number(),            // knowledge-source storage consumed
+    updatedAt: v.number(),
+  })
+    .index("byOrganizationId", ["organizationId"])
+    .index("bySubscriberUserId", ["subscriberUserId"]),
+
   // ─── Knowledge Sources (org-level RAG documents) ────────────────────────────
   knowledgeSources: defineTable({
     organizationId: v.id("organizations"),
     title: v.string(),
     description: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
+    fileSizeBytes: v.optional(v.number()),   // original file size for storage tracking
     totalChunks: v.number(),
     createdAt: v.number(),
     createdBy: v.id("users"),

@@ -34,7 +34,7 @@ export function OrgLayoutClient({
         } as React.CSSProperties
       }
     >
-      <OrgSidebar orgSlug={orgSlug} orgName={org?.name ?? ""} />
+      <OrgSidebar orgSlug={orgSlug} orgName={org?.name ?? ""} myRole={org?.myRole} />
       <SidebarInset>
         <OrgHeader orgSlug={orgSlug} orgName={org?.name ?? ""} />
         <div className="flex flex-1 flex-col">

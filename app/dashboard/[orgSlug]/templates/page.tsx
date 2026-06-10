@@ -34,6 +34,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "@/lib/date";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 export default function TemplatesPage({
   params,
@@ -46,6 +47,7 @@ export default function TemplatesPage({
   if (!org) return <TemplatesSkeleton />;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div>
         <h2 className="text-xl font-semibold">Templates</h2>
@@ -75,6 +77,7 @@ export default function TemplatesPage({
         </TabsContent>
       </Tabs>
     </div>
+    </PaywallGate>
   );
 }
 

@@ -24,6 +24,8 @@ import {
   IconFolderOpen,
   IconMessage2,
 } from "@tabler/icons-react";
+import { CreditUsageCards } from "@/components/billing/credit-usage";
+import { PaywallGate } from "@/components/billing/paywall-gate";
 
 // ─── Color palettes ───────────────────────────────────────────────────────────
 
@@ -94,6 +96,7 @@ export default function AnalyticsPage({
       : 0;
 
   return (
+    <PaywallGate organizationId={org._id}>
     <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div>
         <h2 className="text-xl font-semibold">Analytics</h2>
@@ -101,6 +104,9 @@ export default function AnalyticsPage({
           Workflow activity overview for {org.name}
         </p>
       </div>
+
+      {/* ── Credit & storage usage ───────────────────────────────────────────── */}
+      <CreditUsageCards organizationId={org._id} />
 
       {/* ── Top metric cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -253,6 +259,7 @@ export default function AnalyticsPage({
         </Card>
       </div>
     </div>
+    </PaywallGate>
   );
 }
 
