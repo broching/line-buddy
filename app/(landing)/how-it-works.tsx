@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const STAGES = [
   { id: 0, label: "Build Template", icon: "📋" },
@@ -105,7 +105,7 @@ function TemplateBuilderDemo({ onInteract }: { onInteract: () => void }) {
       </div>
 
       {/* Stage cards row */}
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {templateStages.map((stage, i) => {
           const isActive = i === activeIdx;
           const c = colorMap[stage.color];
@@ -113,7 +113,7 @@ function TemplateBuilderDemo({ onInteract }: { onInteract: () => void }) {
             <button
               key={stage.name}
               onClick={() => handleClick(i)}
-              className={`min-w-[160px] flex-1 rounded-xl border p-4 text-left transition-all duration-200 ${
+              className={`rounded-xl border p-4 text-left transition-all duration-200 ${
                 isActive
                   ? `ring-2 ${c.ring} border-transparent bg-white dark:bg-slate-800 shadow-lg`
                   : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600"
@@ -249,21 +249,42 @@ const extractedFields = [
 
 function AIChatDemo({ onInteract }: { onInteract: () => void }) {
   const [visible, setVisible] = useState(0);
+  const [justFilled, setJustFilled] = useState<Set<string>>(new Set());
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     setVisible(0);
+    setJustFilled(new Set());
     let idx = 0;
+    let scanTimer: ReturnType<typeof setTimeout>;
     const next = () => {
       if (idx < chatMessages.length) {
         idx++;
-        setVisible(idx);
+        const newVis = idx;
+        setVisible(newVis);
+        setScanning(true);
+        scanTimer = setTimeout(() => {
+          setScanning(false);
+          const newFields = extractedFields.filter(
+            (f) => f.triggerAt > 0 && newVis >= f.triggerAt && newVis - 1 < f.triggerAt
+          );
+          if (newFields.length > 0) {
+            setJustFilled(new Set(newFields.map((f) => f.key)));
+            setTimeout(() => setJustFilled(new Set()), 900);
+          }
+        }, 600);
         setTimeout(next, idx % 2 === 0 ? 1400 : 900);
       } else {
-        setTimeout(() => { setVisible(0); idx = 0; setTimeout(next, 600); }, 3000);
+        setTimeout(() => {
+          setVisible(0);
+          setJustFilled(new Set());
+          idx = 0;
+          setTimeout(next, 600);
+        }, 3000);
       }
     };
     const t = setTimeout(next, 600);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); clearTimeout(scanTimer); };
   }, []);
 
   return (
@@ -302,23 +323,42 @@ function AIChatDemo({ onInteract }: { onInteract: () => void }) {
         </div>
 
         {/* Extracted fields panel */}
-        <div className="w-full md:w-56 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="w-full md:w-60 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse" />
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Extracted Fields</span>
+            {scanning ? (
+              <>
+                <span className="size-1.5 rounded-full bg-amber-500 animate-ping" />
+                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Scanning…</span>
+              </>
+            ) : (
+              <>
+                <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Extracted Fields</span>
+              </>
+            )}
           </div>
-          <div className="p-3 space-y-2 bg-white dark:bg-[#0f1329]">
+          <div className="p-3 space-y-1.5 bg-white dark:bg-[#0f1329]">
             {extractedFields.map((f) => {
               const filled = f.triggerAt > 0 && visible >= f.triggerAt;
+              const isNew = justFilled.has(f.key);
               return (
-                <div key={f.key} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-all duration-300 ${
-                  filled ? "bg-green-50 dark:bg-green-500/10" : "bg-slate-50 dark:bg-slate-800/60"
-                }`}>
-                  <span className={filled ? "text-green-700 dark:text-green-400 font-medium" : "text-slate-400 dark:text-slate-500"}>
+                <div
+                  key={f.key}
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-all duration-300 ${
+                    filled
+                      ? isNew
+                        ? "bg-green-100 dark:bg-green-500/20 ring-1 ring-green-400 dark:ring-green-500 scale-[1.02]"
+                        : "bg-green-50 dark:bg-green-500/10"
+                      : "bg-slate-50 dark:bg-slate-800/60"
+                  }`}
+                >
+                  <span className={`truncate mr-2 ${filled ? "text-green-700 dark:text-green-400 font-medium" : "text-slate-400 dark:text-slate-500"}`}>
                     {f.key}
                   </span>
-                  <span className={filled ? "text-green-600 dark:text-green-400 font-semibold" : "text-slate-300 dark:text-slate-600"}>
-                    {filled ? "✓" : "—"}
+                  <span className={`shrink-0 font-medium ${filled ? "text-green-700 dark:text-green-300" : "text-slate-300 dark:text-slate-600"}`}>
+                    {filled ? (
+                      <span className={`text-[10px] ${isNew ? "font-bold" : ""}`}>{f.value}</span>
+                    ) : "—"}
                   </span>
                 </div>
               );
@@ -460,6 +500,7 @@ const reminders = [
     role: "Agent",
     time: "Today, 2:00 PM",
     status: "pending" as const,
+    message: "@Somchai T. Hi! Please confirm your site visit scheduled for today at 2:00 PM. Reply YES to confirm or let us know another time. 🏠",
   },
   {
     field: "Offer price follow-up",
@@ -467,6 +508,7 @@ const reminders = [
     role: "Sales Lead",
     time: "Tomorrow, 10:00 AM",
     status: "scheduled" as const,
+    message: "@Rachel L. Following up on your offer for District 9 Unit #12B. Please provide your final offer price so we can proceed. Thank you!",
   },
   {
     field: "Sign date reminder",
@@ -474,6 +516,7 @@ const reminders = [
     role: "Agent",
     time: "Sent 1h ago",
     status: "sent" as const,
+    message: "@Aom K. Reminder: Your signing date for River Modern is approaching. Please confirm the date with your lawyer so we can finalise the paperwork. 📋",
   },
 ];
 
@@ -509,23 +552,41 @@ function RemindersDemo({ onInteract }: { onInteract: () => void }) {
           return (
             <div
               key={i}
-              className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+              className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
             >
-              <div className={`size-2.5 shrink-0 rounded-full ${cfg.dot}`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{r.field}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.project}</p>
+              <div className="flex items-start gap-3">
+                <div className={`size-2.5 shrink-0 rounded-full mt-1.5 ${cfg.dot}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{r.field}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.project}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.badge}`}>
+                      {cfg.label}
+                    </span>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.badge}`}>
-                    {cfg.label}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
-                  <span>👤 {r.role}</span>
-                  <span>·</span>
-                  <span>🕐 {r.time}</span>
+                  <div className="mt-2 flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
+                    <span>👤 {r.role}</span>
+                    <span>·</span>
+                    <span>🕐 {r.time}</span>
+                  </div>
+                  {/* LINE message preview */}
+                  <div className={`mt-3 rounded-lg border p-2.5 ${
+                    r.status === "sent"
+                      ? "bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20"
+                      : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                  }`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`text-[10px] font-bold ${r.status === "sent" ? "text-green-600 dark:text-green-400" : "text-slate-500 dark:text-slate-400"}`}>
+                        LINE
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {r.status === "sent" ? "message sent" : r.status === "scheduled" ? "will send" : "ready to send"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">{r.message}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -546,36 +607,38 @@ function RemindersDemo({ onInteract }: { onInteract: () => void }) {
 
 export default function HowItWorksDemo() {
   const [activeStage, setActiveStage] = useState(0);
-  const [interactionTimer, setInteractionTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const interactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleUserInteraction = useCallback(() => {
     setIsPaused(true);
-    if (interactionTimer) clearTimeout(interactionTimer);
-    const t = setTimeout(() => {
+    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    interactionTimerRef.current = setTimeout(() => {
       setIsPaused(false);
-      setProgress(0);
     }, INTERACTION_PAUSE_MS);
-    setInteractionTimer(t);
-  }, [interactionTimer]);
+  }, []);
 
-  // Progress bar + auto-advance
+  // Smooth progress bar via requestAnimationFrame — no React state updates per frame
   useEffect(() => {
-    if (isPaused) return;
-    setProgress(0);
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
+    if (isPaused) {
+      if (progressBarRef.current) progressBarRef.current.style.width = "0%";
+      return;
+    }
+    const startTime = performance.now();
+    let raf: number;
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
       const pct = Math.min((elapsed / AUTO_ADVANCE_MS) * 100, 100);
-      setProgress(pct);
-      if (pct >= 100) {
-        clearInterval(interval);
+      if (progressBarRef.current) progressBarRef.current.style.width = `${pct}%`;
+      if (pct < 100) {
+        raf = requestAnimationFrame(tick);
+      } else {
         setActiveStage((s) => (s + 1) % STAGES.length);
-        setProgress(0);
       }
-    }, 50);
-    return () => clearInterval(interval);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [activeStage, isPaused]);
 
   return (
@@ -613,19 +676,17 @@ export default function HowItWorksDemo() {
         </div>
 
         {/* Progress bar */}
-        {!isPaused && (
-          <div className="mb-8 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-            <div
-              className="h-full rounded-full bg-indigo-600 transition-none"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        )}
-        {isPaused && (
-          <div className="mb-8 flex items-center justify-center gap-2 text-xs text-slate-400">
-            <span>⏸</span> Paused — auto-resumes after inactivity
-          </div>
-        )}
+        <div className="mb-8">
+          {!isPaused ? (
+            <div className="h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div ref={progressBarRef} className="h-full rounded-full bg-indigo-600" style={{ width: "0%" }} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-400 h-1">
+              <span>⏸</span> Paused — auto-resumes after inactivity
+            </div>
+          )}
+        </div>
 
         {/* Demo panel */}
         <div className="overflow-hidden rounded-2xl lm-card shadow-xl">

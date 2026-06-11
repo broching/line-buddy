@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { AddPaymentMethodModal } from "@/components/billing/add-payment-method-modal";
 import { useClerk, PricingTable } from "@clerk/nextjs";
@@ -120,12 +121,19 @@ export default function BillingPage({
   const { orgSlug } = use(params);
   const { theme } = useTheme();
   const { openOrganizationProfile } = useClerk();
+  const router = useRouter();
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [pmLoading, setPmLoading] = useState(true);
   const [addCardOpen, setAddCardOpen] = useState(false);
 
   const org = useQuery(api.organizations.get, { slug: orgSlug });
+
+  useEffect(() => {
+    if (org && org.myRole === "member") {
+      router.replace(`/dashboard/${orgSlug}/overview`);
+    }
+  }, [org, orgSlug, router]);
   const billing = useQuery(
     api.billing.getForOrg,
     org ? { organizationId: org._id } : "skip"
@@ -160,7 +168,8 @@ export default function BillingPage({
 
   useEffect(() => { fetchPaymentMethods(); }, [fetchPaymentMethods]);
 
-  if (!org || billing === undefined) return <BillingSkeleton />;
+  if (org === undefined || billing === undefined) return <BillingSkeleton />;
+  if (!org || org.myRole === "member") return null;
 
   const periodEnd = billing.creditsPeriodEnd
     ? new Date(billing.creditsPeriodEnd).toLocaleDateString([], {

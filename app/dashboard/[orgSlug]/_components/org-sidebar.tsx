@@ -76,11 +76,12 @@ function NavSection({
 export function OrgSidebar({
   orgSlug,
   orgName,
+  myRole,
 }: {
   orgSlug: string;
   orgName: string;
   orgImageUrl?: string | null; // kept for compat — OrganizationSwitcher renders its own avatar
-  myRole?: "owner" | "admin" | "member"; // kept for compat — unused after Members nav removed
+  myRole?: "owner" | "admin" | "member";
 }) {
   const base = `/dashboard/${orgSlug}`;
   const pathname = usePathname();
@@ -115,11 +116,14 @@ export function OrgSidebar({
     { title: "Activity", url: `${base}/activity`, icon: IconActivity },
   ];
 
-  // ── Section: Settings (bottom) ───────────────────────────────────────────────
-  const settingsNav: NavItem[] = [
-    { title: "Organization", url: `${base}/settings/organization`, icon: IconBuilding },
-    { title: "Billing", url: `${base}/settings/billing`, icon: IconCreditCard },
-  ];
+  // ── Section: Settings (bottom) — admin/owner only ────────────────────────────
+  const isAdmin = myRole === "owner" || myRole === "admin";
+  const settingsNav: NavItem[] = isAdmin
+    ? [
+        { title: "Organization", url: `${base}/settings/organization`, icon: IconBuilding },
+        { title: "Billing", url: `${base}/settings/billing`, icon: IconCreditCard },
+      ]
+    : [];
 
   return (
     <Sidebar collapsible="offcanvas">
@@ -168,9 +172,9 @@ export function OrgSidebar({
           navigate={navigate}
         />
 
-        {/* Settings pushed to bottom */}
+        {/* Settings pushed to bottom — only for admins/owners */}
         <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
+          {isAdmin && <SidebarGroupLabel>Settings</SidebarGroupLabel>}
           <SidebarGroupContent>
             <SidebarMenu>
               {settingsNav.map((item) => (

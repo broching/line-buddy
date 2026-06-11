@@ -9,6 +9,7 @@ import type {
 } from "@clerk/types";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertCircle,
@@ -87,6 +88,17 @@ export default function OrganizationSettingsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = use(params);
+  const router = useRouter();
+  const org = useQuery(api.organizations.get, { slug: orgSlug });
+
+  useEffect(() => {
+    if (org && org.myRole === "member") {
+      router.replace(`/dashboard/${orgSlug}/overview`);
+    }
+  }, [org, orgSlug, router]);
+
+  // Block render until role is confirmed
+  if (org === undefined || org?.myRole === "member") return null;
 
   return (
     <div className="flex flex-col gap-6 px-4 lg:px-6 py-2">
