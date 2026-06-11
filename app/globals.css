@@ -179,3 +179,33 @@
     letter-spacing: var(--tracking-normal);
   }
 }
+
+@keyframes lb-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes lb-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lb-dot-bounce {
+  animation: lb-bounce 1s infinite;
+}
+
+.lb-msg-fade-in {
+  animation: lb-fade-in 0.3s ease-in;
+}
+
+/* LeadMighty theme helpers */
+.lm-page { @apply bg-[#f8faff] dark:bg-[#080b1a]; }
+.lm-section-alt { @apply bg-white dark:bg-[#0a0d20]; }
+.lm-card { @apply bg-white dark:bg-[#0f1329] border border-slate-200 dark:border-[#1e2448]; }
+.lm-card-subtle { @apply bg-slate-50 dark:bg-[#0b0e22] border border-slate-200 dark:border-[#1e2448]; }
+.lm-divider { @apply border-slate-200 dark:border-[#1e2448]; }
+.lm-h1 { @apply text-slate-900 dark:text-white; }
+.lm-body { @apply text-slate-600 dark:text-slate-400; }
+.lm-muted { @apply text-slate-400 dark:text-slate-600; }
+.lm-label { @apply text-indigo-600 dark:text-indigo-400; }
+.lm-nav { @apply bg-white/80 dark:bg-[#080b1a]/80 border-slate-200/60 dark:border-[#1e2448]/60; }

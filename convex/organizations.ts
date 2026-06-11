@@ -174,13 +174,18 @@ export const listForUser = query({
       .unique();
     if (!user) return [];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerkOrgId = (identity as any)?.org_id as string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerkOrgRole = (identity as any)?.org_role as string | undefined;
+
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("byUserId", (q) => q.eq("userId", user._id))
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    const results = await Promise.all(
+    const orgItems = await Promise.all(
       memberships.map(async (m) => {
         const org = await ctx.db.get(m.organizationId);
         if (!org) return null;
@@ -191,7 +196,28 @@ export const listForUser = query({
         return { ...org, profileImageUrl, myRole };
       })
     );
-    return results.filter(Boolean);
+
+    const list = orgItems.filter((r): r is NonNullable<typeof r> => r !== null);
+
+    // JWT fallback: include the active Clerk org even when no Convex membership exists yet.
+    // This covers the webhook race condition where organizationMembership.created arrived
+    // before user.created, causing syncFromClerk to silently skip the membership.
+    if (clerkOrgId && !list.some((o) => o.clerkOrgId === clerkOrgId)) {
+      const org = await ctx.db
+        .query("organizations")
+        .withIndex("byClerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+        .unique();
+      if (org) {
+        const profileImageUrl = org.profileImageStorageId
+          ? await ctx.storage.getUrl(org.profileImageStorageId)
+          : null;
+        const myRole: "owner" | "admin" | "member" =
+          user._id === org.ownerId ? "owner" : clerkOrgRole === "org:admin" ? "admin" : "member";
+        list.push({ ...org, profileImageUrl, myRole });
+      }
+    }
+
+    return list;
   },
 });
 

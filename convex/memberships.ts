@@ -2,7 +2,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireMembership, computeOrgRole } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
-import { PLAN_LIMITS } from "./billing";
+import { PLAN_LIMITS, billingIsActive } from "./billing";
 
 export const list = query({
   args: { organizationId: v.id("organizations") },
@@ -266,6 +266,37 @@ export const syncFromClerk = internalMutation({
         q.eq("organizationId", org._id).eq("userId", user._id)
       )
       .unique();
+
+    // For existing active memberships (role update) — no seat check needed.
+    if (existing?.isActive) {
+      await ctx.db.patch(existing._id, {
+        orgRole,
+        isAdmin: orgRole !== "member",
+      });
+      return;
+    }
+
+    // New member or reactivation — enforce seat limit before adding.
+    const billing = await ctx.db
+      .query("orgBilling")
+      .withIndex("byOrganizationId", (q) => q.eq("organizationId", org._id))
+      .unique();
+    const isActivePlan = billing ? billingIsActive(billing) : false;
+    const maxSeats = isActivePlan ? PLAN_LIMITS.maxSeats : 1;
+
+    const activeCount = await ctx.db
+      .query("memberships")
+      .withIndex("byOrganizationId", (q) => q.eq("organizationId", org._id))
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect()
+      .then((rows) => rows.length);
+
+    if (activeCount >= maxSeats) {
+      console.warn(
+        `[membership.syncFromClerk] Seat limit (${maxSeats}) reached for org ${org._id}. Not adding clerkUserId ${clerkUserId}.`
+      );
+      return;
+    }
 
     if (existing) {
       await ctx.db.patch(existing._id, {

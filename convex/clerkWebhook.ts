@@ -73,9 +73,27 @@ export const handleClerkWebhook = httpAction(async (ctx, request) => {
   try {
     switch (event.type) {
       case "user.created":
-      case "user.updated":
+      case "user.updated": {
         await ctx.runMutation(api.users.upsertFromClerk, { data: event.data as any });
+        // Retry any org memberships that failed because user didn't exist in Convex yet.
+        // Clerk may include organization_memberships on user.created when the user
+        // accepted an invitation, or organizationMembership.created may have arrived first.
+        const userData = event.data as any;
+        if (Array.isArray(userData.organization_memberships)) {
+          for (const om of userData.organization_memberships) {
+            try {
+              await ctx.runMutation(internal.memberships.syncFromClerk, {
+                clerkOrgId: om.organization.id as string,
+                clerkUserId: userData.id as string,
+                role: om.role as string,
+              });
+            } catch (e) {
+              console.warn(`[clerk-webhook] Could not sync membership for user ${userData.id as string}:`, e);
+            }
+          }
+        }
         break;
+      }
       case "user.deleted":
         await ctx.runMutation(api.users.deleteFromClerk, {
           clerkUserId: (event.data.id as string) ?? "",

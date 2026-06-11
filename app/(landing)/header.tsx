@@ -1,150 +1,132 @@
 'use client'
 import Link from 'next/link'
-import { ChatMaxingIconColoured } from '@/components/logo'
-import { Loader2, Menu, X } from 'lucide-react'
+import Image from 'next/image'
+import { Loader2, Menu, X, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import React from 'react'
 import { cn } from '@/lib/utils'
-
-import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
-import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-
+import { useTheme } from 'next-themes'
+import { Authenticated, Unauthenticated, AuthLoading } from "convex/react"
+import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
 import { dark } from '@clerk/themes'
-import { useTheme } from "next-themes"
-
-
 
 const menuItems = [
-    { name: 'Features', href: '#link' },
-    { name: 'Solution', href: '#link' },
-    { name: 'Pricing', href: '#link' },
-    { name: 'About', href: '#link' },
+  { name: 'Features', href: '#features' },
+  { name: 'How It Works', href: '#how-it-works' },
+  { name: 'Pricing', href: '#pricing' },
+  { name: 'FAQ', href: '#faq' },
 ]
 
 export const HeroHeader = () => {
-    const [menuState, setMenuState] = React.useState(false)
-    const [isScrolled, setIsScrolled] = React.useState(false)
-    const { theme } = useTheme()
+  const [menuState, setMenuState] = React.useState(false)
+  const [isScrolled, setIsScrolled] = React.useState(false)
+  const [mounted, setMounted] = React.useState(false)
+  const { setTheme, resolvedTheme } = useTheme()
 
-    const appearance = {
-        baseTheme: theme === "dark" ? dark : undefined,
-    }
+  const appearance = { baseTheme: resolvedTheme === "dark" ? dark : undefined }
 
-    React.useEffect(() => {
-        const handleScroll = () => {
-            setIsScrolled(window.scrollY > 50)
-        }
-        window.addEventListener('scroll', handleScroll)
-        return () => window.removeEventListener('scroll', handleScroll)
-    }, [])
-    return (
-        <header>
-            <nav
-                data-state={menuState && 'active'}
-                className="fixed z-20 w-full px-2">
-                <div className={cn('mx-auto mt-2 max-w-6xl px-6 transition-all duration-300 lg:px-12', isScrolled && 'bg-background/50 max-w-4xl rounded-2xl border backdrop-blur-lg lg:px-5')}>
-                    <div className="relative flex flex-wrap items-center justify-between gap-6 py-3 lg:gap-0 lg:py-4">
-                        <div className="flex w-full justify-between lg:w-auto">
-                            <Link
-                                href="/"
-                                aria-label="home"
-                                className="flex items-center space-x-2">
-                                <ChatMaxingIconColoured />
-                                <span className="text-xl font-medium">Starter.diy</span>
-                                <Badge variant="outline" className="text-muted-foreground  text-xs">Demo</Badge>
-                            </Link>
+  React.useEffect(() => {
+    setMounted(true)
+    const handleScroll = () => setIsScrolled(window.scrollY > 50)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
-                            <button
-                                onClick={() => setMenuState(!menuState)}
-                                aria-label={menuState == true ? 'Close Menu' : 'Open Menu'}
-                                className="relative z-20 -m-2.5 -mr-4 block cursor-pointer p-2.5 lg:hidden">
-                                <Menu className="in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-6 duration-200" />
-                                <X className="in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-6 -rotate-180 scale-0 opacity-0 duration-200" />
-                            </button>
-                        </div>
+  return (
+    <header>
+      <nav
+        data-state={menuState && 'active'}
+        className={cn(
+          'fixed z-20 w-full border-b backdrop-blur-md transition-all duration-300 lm-nav',
+          isScrolled ? 'py-0' : 'py-0'
+        )}
+      >
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="relative flex items-center justify-between gap-6 py-3.5">
+            {/* Logo */}
+            <Link href="/" aria-label="home" className="flex items-center gap-2.5">
+              <Image src="/brandlogo.png" alt="LeadMighty" width={32} height={32} className="rounded-lg" />
+              <span className="text-lg font-bold text-slate-900 dark:text-white">LeadMighty</span>
+            </Link>
 
-                        <div className="absolute inset-0 m-auto hidden size-fit lg:block">
-                            <ul className="flex gap-8 text-sm">
-                                {menuItems.map((item, index) => (
-                                    <li key={index}>
-                                        <Link
-                                            href={item.href}
-                                            className="text-muted-foreground hover:text-accent-foreground block duration-150">
-                                            <span>{item.name}</span>
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+            {/* Desktop nav */}
+            <div className="absolute inset-0 m-auto hidden size-fit lg:block">
+              <ul className="flex gap-8 text-sm">
+                {menuItems.map((item) => (
+                  <li key={item.name}>
+                    <Link href={item.href} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors duration-150">
+                      {item.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-                        <div className="bg-background in-data-[state=active]:block lg:in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 rounded-3xl border p-6 shadow-2xl shadow-zinc-300/20 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent">
-                            <div className="lg:hidden">
-                                <ul className="space-y-6 text-base">
-                                    {menuItems.map((item, index) => (
-                                        <li key={index}>
-                                            <Link
-                                                href={item.href}
-                                                className="text-muted-foreground hover:text-accent-foreground block duration-150">
-                                                <span>{item.name}</span>
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                            <div className="flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
-                                <AuthLoading>
-                                    <div className="flex items-center justify-center">
-                                        <Loader2 className="size-8 p-2 animate-spin" />
-                                    </div>
-                                </AuthLoading>
-                                <Authenticated>
-                                    <Button asChild size="sm">
-                                        <Link href="/dashboard">
-                                            <span>Dashboard</span>
-                                        </Link>
-                                    </Button>
-                                    <UserButton appearance={appearance} />
-                                </Authenticated>
+            {/* Right actions */}
+            <div className="flex items-center gap-3">
+              {/* Theme toggle */}
+              <button
+                onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                className="flex size-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Toggle theme"
+              >
+                {mounted && (resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
+              </button>
 
-                                <Unauthenticated>
-                                    <SignInButton mode="modal">
-                                        <Button
-                                            asChild
-                                            variant="outline"
-                                            size="sm"
-                                            className={cn(isScrolled && 'lg:hidden')}>
-                                            <Link href="#">
-                                                <span>Login</span>
-                                            </Link>
-                                        </Button>
-                                    </SignInButton>
-                                    <SignUpButton mode="modal">
-                                        <Button
-                                            asChild
-                                            size="sm"
-                                            className={cn(isScrolled && 'lg:hidden')}>
-                                            <Link href="#">
-                                                <span>Sign Up</span>
-                                            </Link>
-                                        </Button>
-                                    </SignUpButton>
-                                    <SignUpButton mode="modal">
-                                        <Button
-                                            asChild
-                                            size="sm"
-                                            className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
-                                            <Link href="#">
-                                                <span>Get Started</span>
-                                            </Link>
-                                        </Button>
-                                    </SignUpButton>
-                                </Unauthenticated>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-        </header>
-    )
+              <AuthLoading>
+                <Loader2 className="size-5 animate-spin text-slate-400" />
+              </AuthLoading>
+              <Authenticated>
+                <Button asChild size="sm">
+                  <Link href="/dashboard">Dashboard</Link>
+                </Button>
+                <UserButton appearance={appearance} />
+              </Authenticated>
+              <Unauthenticated>
+                <SignInButton mode="modal">
+                  <Button variant="ghost" size="sm" className="hidden lg:inline-flex text-slate-600 dark:text-slate-400">
+                    Log in
+                  </Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                    Get Started
+                  </Button>
+                </SignUpButton>
+              </Unauthenticated>
+
+              {/* Mobile hamburger */}
+              <button
+                onClick={() => setMenuState(!menuState)}
+                aria-label="Toggle menu"
+                className="lg:hidden relative -mr-1 p-2 text-slate-600 dark:text-slate-400"
+              >
+                <Menu className={cn("size-5 transition-all", menuState && "opacity-0 scale-0")} />
+                <X className={cn("size-5 absolute inset-0 m-auto transition-all", menuState ? "opacity-100 scale-100" : "opacity-0 scale-0")} />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile menu */}
+          {menuState && (
+            <div className="border-t lm-divider pb-6 pt-4 lg:hidden">
+              <ul className="space-y-4">
+                {menuItems.map((item) => (
+                  <li key={item.name}>
+                    <Link
+                      href={item.href}
+                      onClick={() => setMenuState(false)}
+                      className="block text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    >
+                      {item.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </nav>
+    </header>
+  )
 }

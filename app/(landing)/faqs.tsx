@@ -1,46 +1,83 @@
+"use client";
+
+import React, { useState } from "react";
+
+const faqs = [
+  {
+    q: "How does LeadMighty connect to my LINE group?",
+    a: "You create a LINE Official Account, add it to your group chat, and paste the channel credentials into LeadMighty. Setup takes under 5 minutes. The AI starts listening immediately.",
+  },
+  {
+    q: "Does my team need to change how they use LINE?",
+    a: "No. Your team and customers chat exactly as they normally would. LeadMighty runs silently in the background, extracting relevant data from the conversation automatically.",
+  },
+  {
+    q: "What languages does the AI support?",
+    a: "LeadMighty uses Google Gemini, which handles Thai, English, and mixed-language conversations natively. Perfect for Southeast Asian businesses.",
+  },
+  {
+    q: "Can I define my own workflow stages and fields?",
+    a: "Absolutely. You create workflow templates with any stages and required fields you need — property details, client preferences, booking dates, you name it. No coding required.",
+  },
+  {
+    q: "What happens when a stage is completed?",
+    a: "LeadMighty automatically advances the project to the next stage, cancels any pending reminders for the completed stage, and schedules new reminders for the upcoming one.",
+  },
+  {
+    q: "Is my LINE conversation data private?",
+    a: "Yes. Your data is encrypted in transit and at rest. Conversation data is only used to fill your workflow fields and is never shared or used to train models.",
+  },
+];
+
 export default function FAQs() {
-    return (
-        <section className="scroll-py-16 py-16 md:scroll-py-32 md:py-32">
-            <div className="mx-auto max-w-5xl px-6">
-                <div className="grid gap-y-12 px-2 lg:[grid-template-columns:1fr_auto]">
-                    <div className="text-center lg:text-left">
-                        <h2 className="mb-4 text-3xl font-semibold md:text-4xl">
-                            Frequently <br className="hidden lg:block" /> Asked <br className="hidden lg:block" />
-                            Questions
-                        </h2>
-                        <p>Accusantium quisquam. Illo, omnis?</p>
-                    </div>
+  const [open, setOpen] = useState<number | null>(null);
 
-                    <div className="divide-y divide-dashed sm:mx-auto sm:max-w-lg lg:mx-0">
-                        <div className="pb-6">
-                            <h3 className="font-medium">What is the refund policy?</h3>
-                            <p className="text-muted-foreground mt-4">We offer a 30-day money back guarantee. If you are not satisfied with our product, you can request a refund within 30 days of your purchase.</p>
+  return (
+    <section className="lm-page">
+      <div className="mx-auto max-w-5xl px-6 py-20 md:py-28">
+        <div className="grid gap-12 lg:grid-cols-[1fr_auto]">
+          <div className="text-center lg:text-left">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-widest lm-label">
+              FAQ
+            </p>
+            <h2 className="mb-4 text-3xl font-extrabold lm-h1 sm:text-4xl">
+              Frequently Asked
+              <br className="hidden lg:block" /> Questions
+            </h2>
+            <p className="max-w-sm text-base lm-body">
+              Can&apos;t find the answer you&apos;re looking for? Reach us at{" "}
+              <a
+                href="mailto:hello@leadmighty.app"
+                className="underline text-indigo-600 dark:text-indigo-400"
+              >
+                hello@leadmighty.app
+              </a>
+            </p>
+          </div>
 
-                            <ol className="list-outside list-decimal space-y-2 pl-4">
-                                <li className="text-muted-foreground mt-4">To request a refund, please contact our support team with your order number and reason for the refund.</li>
-                                <li className="text-muted-foreground mt-4">Refunds will be processed within 3-5 business days.</li>
-                                <li className="text-muted-foreground mt-4">Please note that refunds are only available for new customers and are limited to one per customer.</li>
-                            </ol>
-                        </div>
-                        <div className="py-6">
-                            <h3 className="font-medium">How do I cancel my subscription?</h3>
-                            <p className="text-muted-foreground mt-4">You can cancel your subscription at any time by logging into your account and clicking on the cancel button.</p>
-                        </div>
-                        <div className="py-6">
-                            <h3 className="font-medium">Can I upgrade my plan?</h3>
-                            <p className="text-muted-foreground my-4">Yes, you can upgrade your plan at any time by logging into your account and selecting the plan you want to upgrade to.</p>
-                            <ul className="list-outside list-disc space-y-2 pl-4">
-                                <li className="text-muted-foreground">You will be charged the difference in price between your current plan and the plan you are upgrading to.</li>
-                                <li className="text-muted-foreground">Your new plan will take effect immediately and you will be billed at the new rate on your next billing cycle.</li>
-                            </ul>
-                        </div>
-                        <div className="py-6">
-                            <h3 className="font-medium">Do you offer phone support?</h3>
-                            <p className="text-muted-foreground mt-4">We do not offer phone support at this time. However, you can contact us via email or live chat for any questions or concerns you may have.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    )
+          <div className="sm:mx-auto sm:max-w-lg lg:mx-0 lg:w-[520px]">
+            {faqs.map((faq, i) => (
+              <div key={i} className="border-b lm-divider">
+                <button
+                  className="flex w-full items-center justify-between py-5 text-left"
+                  onClick={() => setOpen(open === i ? null : i)}
+                >
+                  <span className="pr-4 text-sm font-semibold lm-h1">{faq.q}</span>
+                  <span
+                    className="shrink-0 text-lg transition-transform duration-200 text-indigo-600 dark:text-indigo-400"
+                    style={{ transform: open === i ? "rotate(45deg)" : "none" }}
+                  >
+                    +
+                  </span>
+                </button>
+                {open === i && (
+                  <p className="pb-5 text-sm leading-relaxed lm-body">{faq.a}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }

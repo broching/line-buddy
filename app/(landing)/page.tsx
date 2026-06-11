@@ -1,5 +1,6 @@
 import HeroSection from "./hero-section";
 import FeaturesOne from "./features-one";
+import HowItWorksDemo from "./how-it-works";
 import Testimonials from "./testimonials";
 import CallToAction from "./call-to-action";
 import FAQs from "./faqs";
@@ -8,21 +9,37 @@ import CustomClerkPricing from "@/components/custom-clerk-pricing";
 
 export default function Home() {
   return (
-    <div>
+    <div className="lm-page">
       <HeroSection />
       <FeaturesOne />
-      <section className="bg-muted/50 py-16 md:py-32">
+      <HowItWorksDemo />
+      <section id="testimonials" className="lm-page">
+        <Testimonials />
+      </section>
+      <section
+        id="pricing"
+        className="lm-section-alt py-20 md:py-28"
+      >
         <div className="mx-auto max-w-7xl px-6">
-          <div className="mb-12 mx-auto max-w-2xl space-y-6 text-center">
-              <h1 className="text-center text-4xl font-semibold lg:text-5xl">Pricing that Scales with You</h1>
-              <p>Gemini is evolving to be more than just the models. It supports an entire to the APIs and platforms helping developers and businesses innovate.</p>
+          <div className="mb-16 text-center">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-widest lm-label">
+              Pricing
+            </p>
+            <h2 className="text-3xl font-extrabold lm-h1 sm:text-4xl">
+              Simple, transparent pricing
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-lg lm-body">
+              1,000 AI credits included every month. Top up as you grow.
+              No surprises.
+            </p>
           </div>
           <CustomClerkPricing />
         </div>
       </section>
-      <Testimonials />
       <CallToAction />
-      <FAQs />
+      <section id="faq" className="lm-page">
+        <FAQs />
+      </section>
       <Footer />
     </div>
   );

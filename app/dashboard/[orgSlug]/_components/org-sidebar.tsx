@@ -3,6 +3,7 @@
 import {
   IconActivity,
   IconBooks,
+  IconBuilding,
   IconChartBar,
   IconChartLine,
   IconFolderOpen,
@@ -116,6 +117,7 @@ export function OrgSidebar({
 
   // ── Section: Settings (bottom) ───────────────────────────────────────────────
   const settingsNav: NavItem[] = [
+    { title: "Organization", url: `${base}/settings/organization`, icon: IconBuilding },
     { title: "Billing", url: `${base}/settings/billing`, icon: IconCreditCard },
   ];
 
