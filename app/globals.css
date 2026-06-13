@@ -2,6 +2,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+html {
+  scroll-behavior: smooth;
+}
+
 :root {
   --background: oklch(1.0000 0 0);
   --foreground: oklch(0.2077 0.0398 265.7549);
@@ -196,6 +200,150 @@
 
 .lb-msg-fade-in {
   animation: lb-fade-in 0.3s ease-in;
+}
+
+/* ── Mockup card CSS custom properties (hero tabs) ──────────────────────────*/
+:root {
+  --mc-card-bg:       #ffffff;
+  --mc-card-bd:       rgba(0,0,0,0.1);
+  --mc-card-shadow:   0 20px 50px rgba(0,0,0,0.1), 0 0 0 1px rgba(99,102,241,0.12);
+  --mc-chrome-bg:     #f8faff;
+  --mc-chrome-bd:     rgba(0,0,0,0.08);
+  --mc-sidebar-bg:    #f1f5f9;
+  --mc-sidebar-bd:    rgba(0,0,0,0.08);
+  --mc-chat-bg:       #ffffff;
+  --mc-text-label:    rgba(0,0,0,0.28);
+  --mc-text-primary:  #1e293b;
+  --mc-text-sec:      rgba(0,0,0,0.52);
+  --mc-text-muted:    rgba(0,0,0,0.35);
+  --mc-text-url:      rgba(0,0,0,0.38);
+  --mc-msg-ai-bg:     rgba(0,0,0,0.07);
+  --mc-msg-user-bg:   rgba(99,102,241,0.12);
+  --mc-msg-user-bd:   rgba(99,102,241,0.15);
+  --mc-msg-text:      rgba(0,0,0,0.82);
+  --mc-typing-bg:     rgba(0,0,0,0.07);
+  --mc-typing-text:   rgba(0,0,0,0.45);
+  --mc-group-sel:     rgba(99,102,241,0.15);
+  --mc-group-sel-t:   #3730a3;
+  --mc-group-off-t:   rgba(0,0,0,0.5);
+  --mc-dot-off:       rgba(0,0,0,0.2);
+  --mc-badge-bg:      rgba(99,102,241,0.1);
+  --mc-badge-text:    #4338ca;
+  --mc-footer-text:   rgba(0,0,0,0.32);
+  --mc-field-bg:      rgba(0,0,0,0.05);
+  --mc-field-bd-e:    rgba(0,0,0,0.09);
+  --mc-field-bd-f:    rgba(99,102,241,0.18);
+  --mc-field-label:   rgba(0,0,0,0.35);
+  --mc-field-val:     #1e293b;
+  --mc-proj-label:    rgba(0,0,0,0.28);
+  --mc-proj-text:     rgba(0,0,0,0.5);
+  --mc-proj-sel-t:    #3730a3;
+  --mc-proj-stg-bg:   rgba(0,0,0,0.05);
+  --mc-proj-stg-t:    rgba(0,0,0,0.4);
+  --mc-proj-sel-stg:  #4338ca;
+  --mc-ai-icon-bg:    rgba(99,102,241,0.1);
+  --mc-stage-done:    #6366f1;
+  --mc-stage-act:     rgba(99,102,241,0.2);
+  --mc-stage-pend:    rgba(0,0,0,0.08);
+  --mc-conn-done:     #6366f1;
+  --mc-conn-pend:     rgba(0,0,0,0.1);
+  --mc-stl-curr:      #4338ca;
+  --mc-stl-done:      rgba(0,0,0,0.45);
+  --mc-stl-pend:      rgba(0,0,0,0.22);
+  --mc-active-hd-bd:  rgba(0,0,0,0.08);
+  --mc-proj-sel-bg:   rgba(99,102,241,0.12);
+}
+.dark {
+  --mc-card-bg:       #0b0e1a;
+  --mc-card-bd:       rgba(255,255,255,0.08);
+  --mc-card-shadow:   0 24px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(99,102,241,0.06), 0 0 50px rgba(99,102,241,0.06);
+  --mc-chrome-bg:     #07080f;
+  --mc-chrome-bd:     rgba(255,255,255,0.07);
+  --mc-sidebar-bg:    #07080f;
+  --mc-sidebar-bd:    rgba(255,255,255,0.07);
+  --mc-chat-bg:       #0d1020;
+  --mc-text-label:    rgba(255,255,255,0.25);
+  --mc-text-primary:  #ffffff;
+  --mc-text-sec:      rgba(255,255,255,0.45);
+  --mc-text-muted:    rgba(255,255,255,0.28);
+  --mc-text-url:      rgba(255,255,255,0.35);
+  --mc-msg-ai-bg:     rgba(255,255,255,0.06);
+  --mc-msg-user-bg:   rgba(99,102,241,0.2);
+  --mc-msg-user-bd:   rgba(99,102,241,0.22);
+  --mc-msg-text:      rgba(255,255,255,0.85);
+  --mc-typing-bg:     rgba(255,255,255,0.06);
+  --mc-typing-text:   rgba(255,255,255,0.4);
+  --mc-group-sel:     rgba(99,102,241,0.25);
+  --mc-group-sel-t:   #e0e7ff;
+  --mc-group-off-t:   rgba(255,255,255,0.45);
+  --mc-dot-off:       rgba(255,255,255,0.25);
+  --mc-badge-bg:      rgba(99,102,241,0.15);
+  --mc-badge-text:    #a5b4fc;
+  --mc-footer-text:   rgba(255,255,255,0.28);
+  --mc-field-bg:      rgba(255,255,255,0.04);
+  --mc-field-bd-e:    rgba(255,255,255,0.04);
+  --mc-field-bd-f:    rgba(99,102,241,0.22);
+  --mc-field-label:   rgba(255,255,255,0.3);
+  --mc-field-val:     #e2e8f0;
+  --mc-proj-label:    rgba(255,255,255,0.25);
+  --mc-proj-text:     rgba(255,255,255,0.45);
+  --mc-proj-sel-t:    #e0e7ff;
+  --mc-proj-stg-bg:   rgba(255,255,255,0.07);
+  --mc-proj-stg-t:    rgba(255,255,255,0.35);
+  --mc-proj-sel-stg:  #c4b5fd;
+  --mc-ai-icon-bg:    rgba(99,102,241,0.2);
+  --mc-stage-done:    #6366f1;
+  --mc-stage-act:     rgba(99,102,241,0.35);
+  --mc-stage-pend:    rgba(255,255,255,0.08);
+  --mc-conn-done:     #6366f1;
+  --mc-conn-pend:     rgba(255,255,255,0.08);
+  --mc-stl-curr:      #a5b4fc;
+  --mc-stl-done:      rgba(255,255,255,0.45);
+  --mc-stl-pend:      rgba(255,255,255,0.22);
+  --mc-active-hd-bd:  rgba(255,255,255,0.07);
+  --mc-proj-sel-bg:   rgba(99,102,241,0.22);
+}
+
+/* Float animation for CTA decorative elements */
+@keyframes lb-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+@keyframes lb-float-alt {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-7px); }
+}
+.lb-float     { animation: lb-float     3.5s ease-in-out infinite; }
+.lb-float-alt { animation: lb-float-alt 4.2s ease-in-out infinite 0.8s; }
+
+/* Hero section entrance animation */
+@keyframes lb-hero-in {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Hero dot-grid background — adapts to theme */
+.lm-hero-dots {
+  background-image: radial-gradient(circle, rgba(99,102,241,0.18) 1.5px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+.dark .lm-hero-dots {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.2) 1.5px, transparent 1.5px);
+}
+
+/* Hero glare / sunshine effect — centered on content, extends to component */
+.lm-hero-glare {
+  background: radial-gradient(ellipse 85% 55% at 50% 30%, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.09) 45%, transparent 70%);
+}
+.dark .lm-hero-glare {
+  background: radial-gradient(ellipse 85% 55% at 50% 30%, rgba(190,205,255,0.26) 0%, rgba(150,170,255,0.09) 48%, transparent 72%);
+}
+/* Secondary glow over the component/mockup area */
+.lm-component-glare {
+  background: radial-gradient(ellipse 75% 50% at 50% 40%, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.04) 55%, transparent 75%);
+}
+.dark .lm-component-glare {
+  background: radial-gradient(ellipse 75% 50% at 50% 40%, rgba(150,160,255,0.12) 0%, rgba(120,140,255,0.04) 55%, transparent 75%);
 }
 
 /* LeadMighty theme helpers */

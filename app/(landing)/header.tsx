@@ -17,6 +17,12 @@ const menuItems = [
   { name: 'FAQ', href: '#faq' },
 ]
 
+function smoothScrollTo(href: string) {
+  const id = href.replace('#', '')
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 export const HeroHeader = () => {
   const [menuState, setMenuState] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
@@ -54,9 +60,13 @@ export const HeroHeader = () => {
               <ul className="flex gap-8 text-sm">
                 {menuItems.map((item) => (
                   <li key={item.name}>
-                    <Link href={item.href} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors duration-150">
+                    <a
+                      href={item.href}
+                      onClick={(e) => { e.preventDefault(); smoothScrollTo(item.href); }}
+                      className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 cursor-pointer"
+                    >
                       {item.name}
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>
@@ -113,13 +123,13 @@ export const HeroHeader = () => {
               <ul className="space-y-4">
                 {menuItems.map((item) => (
                   <li key={item.name}>
-                    <Link
+                    <a
                       href={item.href}
-                      onClick={() => setMenuState(false)}
-                      className="block text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      onClick={(e) => { e.preventDefault(); setMenuState(false); smoothScrollTo(item.href); }}
+                      className="block text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                     >
                       {item.name}
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>

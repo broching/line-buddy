@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 const faqs = [
   {
@@ -28,6 +28,51 @@ const faqs = [
     a: "Yes. Your data is encrypted in transit and at rest. Conversation data is only used to fill your workflow fields and is never shared or used to train models.",
   },
 ];
+
+function FAQItem({
+  faq,
+  isOpen,
+  onToggle,
+}: {
+  faq: { q: string; a: string };
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    if (bodyRef.current) setHeight(bodyRef.current.scrollHeight);
+  }, [faq.a]);
+
+  return (
+    <div className="border-b lm-divider">
+      <button
+        className="flex w-full items-center justify-between py-5 text-left"
+        onClick={onToggle}
+      >
+        <span className="pr-4 text-sm font-semibold lm-h1">{faq.q}</span>
+        <span
+          className="shrink-0 text-lg transition-transform duration-300 text-indigo-600 dark:text-indigo-400"
+          style={{ transform: isOpen ? "rotate(45deg)" : "none" }}
+        >
+          +
+        </span>
+      </button>
+      <div
+        style={{
+          maxHeight: isOpen ? height : 0,
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4,0,0.2,1)",
+        }}
+      >
+        <div ref={bodyRef}>
+          <p className="pb-5 text-sm leading-relaxed lm-body">{faq.a}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function FAQs() {
   const [open, setOpen] = useState<number | null>(null);
@@ -57,23 +102,12 @@ export default function FAQs() {
 
           <div className="sm:mx-auto sm:max-w-lg lg:mx-0 lg:w-[520px]">
             {faqs.map((faq, i) => (
-              <div key={i} className="border-b lm-divider">
-                <button
-                  className="flex w-full items-center justify-between py-5 text-left"
-                  onClick={() => setOpen(open === i ? null : i)}
-                >
-                  <span className="pr-4 text-sm font-semibold lm-h1">{faq.q}</span>
-                  <span
-                    className="shrink-0 text-lg transition-transform duration-200 text-indigo-600 dark:text-indigo-400"
-                    style={{ transform: open === i ? "rotate(45deg)" : "none" }}
-                  >
-                    +
-                  </span>
-                </button>
-                {open === i && (
-                  <p className="pb-5 text-sm leading-relaxed lm-body">{faq.a}</p>
-                )}
-              </div>
+              <FAQItem
+                key={i}
+                faq={faq}
+                isOpen={open === i}
+                onToggle={() => setOpen(open === i ? null : i)}
+              />
             ))}
           </div>
         </div>

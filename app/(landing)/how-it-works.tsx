@@ -27,21 +27,25 @@ const templateStages = [
   {
     name: "Initial Contact",
     color: "indigo",
+    description: "Capture lead details, budget, and unit preference from the first conversation.",
     fields: ["Client Name", "Phone", "Budget (SGD)", "Unit Type", "Source"],
   },
   {
     name: "Site Visit",
     color: "violet",
+    description: "Schedule and confirm the property viewing, assign the right agent.",
     fields: ["Visit Date", "Unit Number", "Agent Assigned", "Visit Notes"],
   },
   {
     name: "Offer Made",
     color: "purple",
+    description: "Record the formal offer, payment structure, and decision timeline.",
     fields: ["Offer Price", "Payment Terms", "Decision Date", "Special Requests"],
   },
   {
     name: "Closing",
     color: "fuchsia",
+    description: "Finalize the deal — signing date, lawyer, commission, and handover.",
     fields: ["Sign Date", "Commission %", "Lawyer Assigned", "Handover Date"],
   },
 ];
@@ -125,8 +129,11 @@ function TemplateBuilderDemo({ onInteract }: { onInteract: () => void }) {
                 </span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">{stage.fields.length} fields</span>
               </div>
-              <p className={`text-sm font-semibold mb-3 ${isActive ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
+              <p className={`text-sm font-semibold mb-1 ${isActive ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
                 {stage.name}
+              </p>
+              <p className={`text-[10px] leading-relaxed mb-2.5 ${isActive ? "text-slate-500 dark:text-slate-400" : "text-slate-400 dark:text-slate-600"}`}>
+                {stage.description}
               </p>
               <div className="flex flex-wrap gap-1">
                 {stage.fields.slice(0, 3).map((f) => (
@@ -147,9 +154,16 @@ function TemplateBuilderDemo({ onInteract }: { onInteract: () => void }) {
 
       {/* Detail panel */}
       <div className={`mt-4 rounded-xl p-4 ring-1 ${colors.ring} bg-white dark:bg-slate-800/60`}>
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
-          {active.name} — Required Fields
-        </p>
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+              {active.name} — Required Fields
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm">
+              {active.description}
+            </p>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {active.fields.map((f) => (
             <span key={f} className={`text-xs px-2.5 py-1 rounded-full font-medium ${colors.chip}`}>
@@ -163,13 +177,69 @@ function TemplateBuilderDemo({ onInteract }: { onInteract: () => void }) {
 }
 
 const groups = [
-  { name: "River Modern Sales", members: 8, template: "Property Sale", projects: 12, status: "active" as const },
-  { name: "District 9 Team", members: 5, template: "Property Sale", projects: 7, status: "active" as const },
-  { name: "New Development", members: 3, template: "Property Sale", projects: 2, status: "connecting" as const },
+  {
+    name: "River Modern Sales",
+    emoji: "🏙️",
+    avatarBg: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+    members: 8,
+    template: "Property Sale",
+    projects: 12,
+    status: "active" as const,
+    lastMsg: "AI processed 3 fields · 2 min ago",
+    participants: [
+      { initials: "ST", bg: "#6366f1" },
+      { initials: "NR", bg: "#8b5cf6" },
+      { initials: "RL", bg: "#7c3aed" },
+      { initials: "JW", bg: "#0ea5e9" },
+      { initials: "+4", bg: "#94a3b8" },
+    ],
+  },
+  {
+    name: "District 9 Closing",
+    emoji: "🏢",
+    avatarBg: "linear-gradient(135deg,#7c3aed,#a855f7)",
+    members: 5,
+    template: "Property Sale",
+    projects: 7,
+    status: "active" as const,
+    lastMsg: "Stage 3 fields complete · 15 min ago",
+    participants: [
+      { initials: "AK", bg: "#7c3aed" },
+      { initials: "WP", bg: "#f59e0b" },
+      { initials: "RL", bg: "#ec4899" },
+      { initials: "+2", bg: "#94a3b8" },
+    ],
+  },
+  {
+    name: "New Development",
+    emoji: "🏗️",
+    avatarBg: "linear-gradient(135deg,#94a3b8,#64748b)",
+    members: 3,
+    template: "Property Sale",
+    projects: 2,
+    status: "pending" as const,
+    lastMsg: "Ready to connect",
+    participants: [
+      { initials: "BK", bg: "#0ea5e9" },
+      { initials: "PL", bg: "#f59e0b" },
+      { initials: "SR", bg: "#8b5cf6" },
+    ],
+  },
 ];
 
+type ConnectState = "idle" | "connecting" | "connected";
+
 function GroupChatsDemo({ onInteract }: { onInteract: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(0);
+  const [connectState, setConnectState] = useState<ConnectState>("idle");
+
+  const handleConnect = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (connectState !== "idle") return;
+    setConnectState("connecting");
+    onInteract();
+    setTimeout(() => setConnectState("connected"), 2200);
+  };
 
   return (
     <div className="p-6 md:p-8">
@@ -179,70 +249,129 @@ function GroupChatsDemo({ onInteract }: { onInteract: () => void }) {
       </div>
 
       <div className="space-y-3">
-        {groups.map((g, i) => (
-          <button
-            key={g.name}
-            onClick={() => { setSelected(i === selected ? null : i); onInteract(); }}
-            className={`w-full rounded-xl border p-4 text-left transition-all duration-200 ${
-              selected === i
-                ? "ring-2 ring-indigo-500 border-transparent bg-white dark:bg-slate-800 shadow-md"
-                : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-indigo-300 dark:hover:border-indigo-500/50"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-green-500 text-white text-lg">
-                💬
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{g.name}</p>
-                  {g.status === "connecting" ? (
-                    <span className="shrink-0 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
-                      <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      Connecting…
-                    </span>
-                  ) : (
-                    <span className="shrink-0 flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-                      <span className="size-1.5 rounded-full bg-green-500" />
-                      Active
-                    </span>
-                  )}
+        {groups.map((g, i) => {
+          const isSelected = selected === i;
+          const isPending = g.status === "pending";
+          return (
+            <div
+              key={g.name}
+              role="button"
+              tabIndex={0}
+              onClick={() => { setSelected(i === selected ? null : i); onInteract(); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setSelected(i === selected ? null : i); onInteract(); } }}
+              className={`w-full rounded-xl border p-4 text-left transition-all duration-200 cursor-pointer ${
+                isSelected
+                  ? "ring-2 ring-indigo-500 border-transparent bg-white dark:bg-slate-800 shadow-md"
+                  : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-indigo-300 dark:hover:border-indigo-500/50"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {/* Group picture */}
+                <div
+                  className="size-11 shrink-0 rounded-xl flex items-center justify-center text-xl shadow-sm"
+                  style={{ background: g.avatarBg }}
+                >
+                  {g.emoji}
                 </div>
-                <div className="mt-1 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                  <span>{g.members} members</span>
-                  <span>·</span>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">{g.template}</span>
-                  <span>·</span>
-                  <span>{g.projects} projects</span>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{g.name}</p>
+                    {/* Status / Connect button */}
+                    {isPending ? (
+                      <button
+                        onClick={handleConnect}
+                        className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-300 ${
+                          connectState === "idle"
+                            ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                            : connectState === "connecting"
+                            ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center gap-1.5"
+                            : "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 flex items-center gap-1"
+                        }`}
+                      >
+                        {connectState === "idle" && "Connect"}
+                        {connectState === "connecting" && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="size-1.5 rounded-full bg-amber-500 animate-ping" />
+                            Connecting…
+                          </span>
+                        )}
+                        {connectState === "connected" && (
+                          <span className="flex items-center gap-1">
+                            <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                            Connected
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="shrink-0 flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                        <span className="size-1.5 rounded-full bg-green-500" />
+                        Active
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Participant avatars + meta */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex -space-x-1.5">
+                      {g.participants.map((p, pi) => (
+                        <div
+                          key={pi}
+                          className="size-5 rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center text-[8px] font-bold text-white"
+                          style={{ background: p.bg }}
+                        >
+                          {p.initials}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {g.members} members · <span className="text-indigo-600 dark:text-indigo-400 font-medium">{g.template}</span> · {g.projects} projects
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {isSelected && !isPending && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+                  <span>AI monitoring active — {g.lastMsg}</span>
+                </div>
+              )}
+              {isSelected && isPending && connectState === "connected" && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+                  <span className="size-1.5 rounded-full bg-green-500 shrink-0" />
+                  <span>AI monitoring started — listening for new messages</span>
+                </div>
+              )}
             </div>
-            {selected === i && g.status === "active" && (
-              <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <span>🤖</span>
-                <span>AI monitoring active — last message processed 2 minutes ago</span>
-              </div>
-            )}
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
+const GROUP_COLORS: Record<string, { bg: string; initials: string }> = {
+  "Somchai T.": { bg: "#6366f1", initials: "ST" },
+  "Nida R.":    { bg: "#8b5cf6", initials: "NR" },
+};
+
 const chatMessages = [
   { from: "user" as const, name: "Somchai T.", text: "Hi, I'm interested in a 3-bedroom unit" },
-  { from: "ai" as const, text: "Great! I'll note that. What's your target budget range?" },
+  { from: "user" as const, name: "Nida R.", text: "Same here! Any 2BR units available?" },
+  { from: "ai" as const, text: "Great! I've noted Somchai (3BR) and Nida (2BR). What's your budget, Somchai?" },
   { from: "user" as const, name: "Somchai T.", text: "Around 3 million SGD, looking to move in Q3" },
-  { from: "ai" as const, text: "Perfect! I've noted your budget and timeline. Can I get your phone number for follow-up?" },
+  { from: "ai" as const, text: "Budget and timeline saved! Can I get your phone number, Somchai?" },
   { from: "user" as const, name: "Somchai T.", text: "Sure, it's +66 81 234 5678" },
 ];
 
 const extractedFields = [
   { key: "Unit Type", value: "3-Bedroom", triggerAt: 1 },
-  { key: "Budget", value: "S$3,000,000", triggerAt: 3 },
-  { key: "Move-in", value: "Q3 2025", triggerAt: 3 },
-  { key: "Phone", value: "+66 81 234 5678", triggerAt: 5 },
+  { key: "Budget", value: "S$3,000,000", triggerAt: 4 },
+  { key: "Move-in", value: "Q3 2025", triggerAt: 4 },
+  { key: "Phone", value: "+66 81 234 5678", triggerAt: 6 },
   { key: "Client Name", value: "Somchai T.", triggerAt: 1 },
   { key: "Source", value: "—", triggerAt: 0 },
 ];
@@ -298,27 +427,47 @@ function AIChatDemo({ onInteract }: { onInteract: () => void }) {
         {/* Chat panel */}
         <div className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex items-center gap-2">
+            <div className="flex -space-x-1.5 mr-1">
+              {["#6366f1","#8b5cf6"].map((c, i) => (
+                <div key={i} className="size-4 rounded-full border-2 border-slate-50 dark:border-slate-800" style={{ background: c }} />
+              ))}
+            </div>
             <span className="text-xs font-semibold text-green-600 dark:text-green-400">LINE</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">River Modern Sales</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">River Modern Sales · 8 members</span>
           </div>
-          <div className="p-3 space-y-2.5 min-h-[220px] bg-white dark:bg-[#0f1329]">
-            {chatMessages.slice(0, visible).map((msg, i) => (
-              <div key={i} className={`lb-msg-fade-in flex ${msg.from === "user" ? "justify-end" : "gap-2"}`}>
-                {msg.from === "ai" && (
-                  <div className="size-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-xs shrink-0 mt-auto">🤖</div>
-                )}
-                <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                  msg.from === "user"
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
-                }`}
-                  style={{ borderBottomRightRadius: msg.from === "user" ? 4 : undefined, borderBottomLeftRadius: msg.from === "ai" ? 4 : undefined }}
-                >
-                  {msg.from === "user" && <span className="block text-[10px] text-indigo-200 mb-0.5">{msg.name}</span>}
-                  {msg.text}
+          <div className="p-3 space-y-2 min-h-[220px] bg-white dark:bg-[#0f1329]">
+            {chatMessages.slice(0, visible).map((msg, i) => {
+              const participant = msg.name ? GROUP_COLORS[msg.name] : null;
+              return (
+                <div key={i} className="lb-msg-fade-in flex gap-2">
+                  {msg.from === "ai" ? (
+                    <div className="size-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-xs shrink-0 mt-auto">🤖</div>
+                  ) : (
+                    <div
+                      className="size-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 mt-auto"
+                      style={{ background: participant?.bg ?? "#6366f1" }}
+                    >
+                      {participant?.initials ?? "?"}
+                    </div>
+                  )}
+                  <div className="max-w-[75%]">
+                    {msg.from === "user" && msg.name && (
+                      <p className="text-[10px] font-semibold mb-0.5" style={{ color: participant?.bg ?? "#6366f1" }}>{msg.name}</p>
+                    )}
+                    <div
+                      className={`rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                        msg.from === "user"
+                          ? "bg-indigo-50 dark:bg-[#1e2448] text-slate-800 dark:text-slate-200 border border-indigo-100 dark:border-indigo-500/20"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                      }`}
+                      style={{ borderBottomLeftRadius: 4 }}
+                    >
+                      {msg.text}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -370,55 +519,70 @@ function AIChatDemo({ onInteract }: { onInteract: () => void }) {
   );
 }
 
-const columns = [
+const pipelineColumns = [
   {
     name: "Initial Contact",
+    color: "indigo",
+    headerBg: "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300",
     cards: [
-      { client: "Nida R.", progress: "5/5", complete: true, avatar: "NR", advancing: false },
-      { client: "Jason W.", progress: "3/5", complete: false, avatar: "JW", advancing: false },
+      { project: "River Modern #8", desc: "3BR unit, S$3M budget, Q3 move-in", progress: 5, total: 5, complete: true, dot: "#6366f1", advancing: false },
+      { project: "Lakewood Unit 2A", desc: "2BR resale, investor buyer", progress: 3, total: 5, complete: false, dot: "#8b5cf6", advancing: false },
     ],
   },
   {
     name: "Site Visit",
+    color: "violet",
+    headerBg: "bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300",
     cards: [
-      { client: "Somchai T.", progress: "4/4", complete: true, avatar: "ST", advancing: true },
+      { project: "District 9 #12B", desc: "High-end unit, all fields complete", progress: 4, total: 4, complete: true, dot: "#7c3aed", advancing: true },
     ],
   },
   {
     name: "Offer Made",
+    color: "purple",
+    headerBg: "bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300",
     cards: [
-      { client: "Rachel L.", progress: "2/4", complete: false, avatar: "RL", advancing: false },
+      { project: "Bayview Condo #5C", desc: "Offer submitted, awaiting decision", progress: 2, total: 4, complete: false, dot: "#a855f7", advancing: false },
     ],
   },
   {
     name: "Closing",
+    color: "fuchsia",
+    headerBg: "bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300",
     cards: [
-      { client: "Aom K.", progress: "4/4", complete: true, avatar: "AK", advancing: false },
+      { project: "One Pearl Bank #31A", desc: "Signing date confirmed, lawyer assigned", progress: 4, total: 4, complete: true, dot: "#d946ef", advancing: false },
     ],
   },
 ];
 
-const colColors = ["indigo", "violet", "purple", "fuchsia"];
-const colBg: Record<string, string> = {
-  indigo: "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300",
-  violet: "bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300",
-  purple: "bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300",
-  fuchsia: "bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300",
-};
-
 function ProjectPipelineDemo({ onInteract }: { onInteract: () => void }) {
-  const [advancing, setAdvancing] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
 
-  const handleAdvance = () => {
-    if (advanced) return;
-    setAdvancing(true);
-    onInteract();
-    setTimeout(() => {
+  // Auto-advance after 2.5s, then reset after 3s more (loop)
+  useEffect(() => {
+    const t1 = setTimeout(() => {
+      setAdvancing(true);
+      onInteract();
+    }, 2500);
+    return () => clearTimeout(t1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advanced]);
+
+  useEffect(() => {
+    if (!advancing) return;
+    const t = setTimeout(() => {
       setAdvancing(false);
       setAdvanced(true);
-    }, 1000);
-  };
+    }, 900);
+    return () => clearTimeout(t);
+  }, [advancing]);
+
+  useEffect(() => {
+    if (!advanced) return;
+    const t = setTimeout(() => setAdvanced(false), 3500);
+    return () => clearTimeout(t);
+  }, [advanced]);
 
   return (
     <div className="p-6 md:p-8">
@@ -428,66 +592,85 @@ function ProjectPipelineDemo({ onInteract }: { onInteract: () => void }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {columns.map((col, ci) => {
-          const color = colColors[ci];
-          const headerClass = colBg[color];
-          return (
-            <div key={col.name} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className={`px-3 py-2 text-xs font-semibold ${headerClass}`}>
-                {col.name}
-              </div>
-              <div className="p-2 space-y-2 bg-slate-50 dark:bg-slate-800/40 min-h-[140px]">
-                {col.cards.map((card, ki) => {
-                  const isAdvancing = card.advancing && !advanced;
-                  const wasAdvanced = card.advancing && advanced;
-                  if (wasAdvanced && ci === 1) return null;
-                  return (
-                    <button
-                      key={`${ci}-${ki}`}
-                      onClick={card.advancing ? handleAdvance : onInteract}
-                      className={`w-full rounded-lg border p-2.5 text-left transition-all duration-300 bg-white dark:bg-slate-800 ${
-                        isAdvancing
-                          ? "border-indigo-400 dark:border-indigo-500 shadow-md shadow-indigo-500/20 animate-pulse"
-                          : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className={`size-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
-                          ci === 0 ? "bg-indigo-500" : ci === 1 ? "bg-violet-500" : ci === 2 ? "bg-purple-500" : "bg-fuchsia-500"
-                        }`}>
-                          {card.avatar}
-                        </div>
-                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{card.client}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{card.progress} fields</span>
-                        {card.complete && (
-                          <span className="text-[10px] text-green-600 dark:text-green-400 font-semibold">✓ Done</span>
-                        )}
-                      </div>
-                      {isAdvancing && (
-                        <div className="mt-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
-                          <span className="size-1.5 rounded-full bg-indigo-500 animate-ping" />
-                          Click to advance →
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-                {/* Show advanced card in next column */}
-                {advanced && ci === 2 && (
-                  <div className="w-full rounded-lg border border-indigo-300 dark:border-indigo-500 p-2.5 bg-indigo-50 dark:bg-indigo-500/10">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <div className="size-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-violet-500">ST</div>
-                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Somchai T.</span>
-                    </div>
-                    <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">↑ Just advanced!</div>
-                  </div>
-                )}
-              </div>
+        {pipelineColumns.map((col, ci) => (
+          <div key={col.name} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className={`px-3 py-2 text-xs font-semibold ${col.headerBg}`}>
+              {col.name}
             </div>
-          );
-        })}
+            <div className="p-2 space-y-2 bg-slate-50 dark:bg-slate-800/40 min-h-[150px]">
+              {col.cards.map((card, ki) => {
+                const isAdvancing = card.advancing && advancing;
+                const wasAdvanced = card.advancing && advanced;
+                if (wasAdvanced && ci === 1) return null;
+                const pct = Math.round((card.progress / card.total) * 100);
+                return (
+                  <div
+                    key={`${ci}-${ki}`}
+                    className={`rounded-lg border p-2.5 transition-all duration-500 bg-white dark:bg-slate-800 ${
+                      isAdvancing
+                        ? "border-violet-400 dark:border-violet-500 shadow-lg shadow-violet-500/20 scale-[1.02]"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    {/* Project header */}
+                    <div className="flex items-start gap-2 mb-2">
+                      <div
+                        className="size-2 rounded-full shrink-0 mt-1.5"
+                        style={{ background: card.dot }}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-tight truncate">
+                          {card.project}
+                        </p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed mt-0.5">
+                          {card.desc}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${pct}%`, background: card.dot }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                        {card.progress}/{card.total}
+                      </span>
+                      {card.complete && (
+                        <span className="text-[10px] text-green-600 dark:text-green-400 font-semibold shrink-0">✓</span>
+                      )}
+                    </div>
+                    {isAdvancing && (
+                      <div className="mt-1.5 text-[10px] text-violet-600 dark:text-violet-400 font-medium flex items-center gap-1">
+                        <span className="size-1 rounded-full bg-violet-500 animate-ping" />
+                        Advancing…
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Card appearing in next column after advance */}
+              {advanced && ci === 2 && (
+                <div className="lb-msg-fade-in rounded-lg border border-violet-300 dark:border-violet-500/60 p-2.5 bg-violet-50 dark:bg-violet-500/10">
+                  <div className="flex items-start gap-2 mb-1.5">
+                    <div className="size-2 rounded-full shrink-0 mt-1.5 bg-violet-500" />
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-tight">
+                      District 9 #12B
+                    </p>
+                  </div>
+                  <p className="text-[10px] text-violet-600 dark:text-violet-400 font-medium flex items-center gap-1 pl-3.5">
+                    <svg className="size-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                    Just advanced to Offer Made
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
