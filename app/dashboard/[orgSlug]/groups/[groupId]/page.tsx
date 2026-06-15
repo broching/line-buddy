@@ -46,6 +46,7 @@ import {
   IconBell,
   IconClock,
   IconTrash,
+  IconDoorExit,
 } from "@tabler/icons-react";
 import {
   Select,
@@ -64,6 +65,7 @@ import dynamic from "next/dynamic";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { CreditBadge } from "@/components/billing/credit-usage";
@@ -137,6 +139,7 @@ export default function GroupDetailPage({
   params: Promise<{ orgSlug: string; groupId: string }>;
 }) {
   const { orgSlug, groupId } = use(params);
+  const router = useRouter();
   const org = useQuery(api.organizations.get, { slug: orgSlug });
 
   const group = useQuery(
@@ -166,6 +169,10 @@ export default function GroupDetailPage({
     api.workflowTemplates.list,
     org ? { organizationId: org._id } : "skip"
   );
+
+  const { confirmDialog, ConfirmDialogNode } = useConfirm();
+  const leaveGroupAction = useAction(api.groupChats.leaveGroup);
+  const [leaving, setLeaving] = useState(false);
 
   const [projectSearch, setProjectSearch] = useState("");
   const [showCreateProject, setShowCreateProject] = useState(false);
@@ -222,6 +229,31 @@ export default function GroupDetailPage({
     );
   }
 
+  async function handleLeaveGroup() {
+    if (!org || !group) return;
+    const ok = await confirmDialog({
+      title: `Leave "${group.displayName}"?`,
+      description:
+        "The bot will leave this LINE group and stop monitoring it. Past messages will be preserved in the archive.",
+      confirmLabel: "Leave group",
+      variant: "destructive" as const,
+    });
+    if (!ok) return;
+    setLeaving(true);
+    try {
+      await leaveGroupAction({
+        organizationId: org._id,
+        groupChatId: groupId as Id<"groupChats">,
+      });
+      toast.success("Left group — archived.");
+      router.push(`/dashboard/${orgSlug}/groups`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to leave group");
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   const profileById: Record<string, UserProfile> = Object.fromEntries(
     (userProfiles ?? []).map((p) => [p.lineUserId, p])
   );
@@ -261,7 +293,7 @@ export default function GroupDetailPage({
               variant={group.isActive ? "default" : "secondary"}
               className="text-xs shrink-0"
             >
-              {group.isActive ? "Active" : "Disconnected"}
+              {group.isActive ? "Active" : "Archived"}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground font-mono">{group.lineGroupId}</p>
@@ -277,8 +309,22 @@ export default function GroupDetailPage({
             {messages.length} msg{messages.length !== 1 ? "s" : ""}
           </span>
           <CreditBadge organizationId={org._id} />
+          {group.isActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-7 px-2 gap-1.5"
+              onClick={handleLeaveGroup}
+              disabled={leaving}
+              title="Leave group"
+            >
+              <IconDoorExit className="size-3.5" />
+              <span className="hidden sm:inline text-xs">Leave</span>
+            </Button>
+          )}
         </div>
       </div>
+      {ConfirmDialogNode}
 
       {/* ── Split panel — mobile: projects top / chat bottom; desktop: chat left / projects right ── */}
       <div className="flex flex-col-reverse md:flex-row flex-1 min-h-0 overflow-hidden">
@@ -325,6 +371,7 @@ export default function GroupDetailPage({
             groupChatId={groupId as Id<"groupChats">}
             organizationId={org._id}
             orgSlug={orgSlug}
+            isActive={group.isActive}
           />
         </div>
 
@@ -584,12 +631,28 @@ function ChatBubble({
           {/* Message bubble + AI trace icon */}
           <div className="flex items-end gap-2">
             <div className="max-w-[75%] rounded-2xl rounded-tl-sm bg-muted px-3 py-2 text-sm leading-relaxed">
-              {message.imageUrl ? (
+              {message.imageUrl && message.messageType === "image" ? (
                 <img
                   src={message.imageUrl}
                   alt="Image"
                   className="max-w-full rounded-lg max-h-64 object-cover"
                 />
+              ) : message.imageUrl && message.messageType === "video" ? (
+                <video
+                  src={message.imageUrl}
+                  controls
+                  className="max-w-full rounded-lg max-h-64"
+                  preload="metadata"
+                />
+              ) : message.imageUrl && (message.messageType === "file" || message.messageType === "audio") ? (
+                <a
+                  href={message.imageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs underline underline-offset-2"
+                >
+                  {message.messageType === "audio" ? "🔊 Audio file" : "📎 " + (message.text || "File attachment")}
+                </a>
               ) : message.messageType === "sticker" ? (
                 <span className="text-muted-foreground italic text-xs">[Sticker]</span>
               ) : (
@@ -1882,10 +1945,12 @@ function FieldRow({
 function ComposeBar({
   groupChatId,
   organizationId,
+  isActive = true,
 }: {
   groupChatId: Id<"groupChats">;
   organizationId: Id<"organizations">;
   orgSlug: string;
+  isActive?: boolean;
 }) {
   const { user } = useUser();
   const generateUploadUrl = useMutation(api.fileStorage.generateUploadUrl);
@@ -1967,6 +2032,20 @@ function ComposeBar({
       e.preventDefault();
       void handleSend();
     }
+  }
+
+  if (!isActive) {
+    return (
+      <div className="shrink-0 border-t bg-muted/30 px-4 py-3 flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex items-center justify-center size-8 rounded-full bg-destructive/10 shrink-0">
+          <IconDoorExit className="size-4 text-destructive" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-medium text-foreground text-sm">Bot has left this group</p>
+          <p className="text-xs text-muted-foreground">This chat is archived — no new messages will be received or sent.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -2197,8 +2276,8 @@ function AddProjectModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             New project
             {hasRoles && step === 2 && (
@@ -2208,7 +2287,7 @@ function AddProjectModal({
         </DialogHeader>
 
         {step === 1 ? (
-          <form onSubmit={handleNext} className="flex flex-col gap-4 pt-2">
+          <form onSubmit={handleNext} className="flex flex-col gap-4 pt-2 overflow-y-auto">
             <div className="flex flex-col gap-1.5">
               <Label>Project name</Label>
               <Input
@@ -2234,7 +2313,7 @@ function AddProjectModal({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2 pt-1 pb-1">
               <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
               <Button type="submit" disabled={creating || !name.trim() || contextLoading}>
                 {contextLoading ? "Loading…" : hasRoles ? "Next →" : creating ? "Creating…" : "Create project"}
@@ -2242,20 +2321,22 @@ function AddProjectModal({
             </div>
           </form>
         ) : (
-          <div className="flex flex-col gap-5 pt-2">
-            <div>
+          <div className="flex flex-col min-h-0 flex-1 gap-4 pt-2 overflow-hidden">
+            <div className="shrink-0">
               <p className="text-sm font-medium">Assign team members to roles</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Map LINE group members to the roles used in this workflow.
+                Map LINE group members to the roles used in this workflow. You can change this later.
               </p>
             </div>
-            <div className="flex flex-col gap-3">
+
+            {/* Scrollable role list */}
+            <div className="flex flex-col gap-3 overflow-y-auto flex-1 min-h-0 pr-1">
               {context?.roles.map((role, i) => (
-                <div key={role.roleId} className="rounded-lg border p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{role.roleName}</span>
+                <div key={role.roleId} className="rounded-lg border p-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{role.roleName}</p>
                     {role.teamName && (
-                      <span className="text-xs text-muted-foreground">· {role.teamName}</span>
+                      <p className="text-xs text-muted-foreground">{role.teamName}</p>
                     )}
                   </div>
                   <Select
@@ -2268,8 +2349,8 @@ function AddProjectModal({
                       })
                     }
                   >
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Select member…" />
+                    <SelectTrigger className="h-8 text-sm w-40 shrink-0">
+                      <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
                     <SelectContent>
                       {(context?.knownUsers ?? []).map((u) => (
@@ -2282,7 +2363,9 @@ function AddProjectModal({
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between gap-2 pt-1">
+
+            {/* Footer — always visible */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t shrink-0">
               <Button type="button" variant="ghost" size="sm" onClick={() => setStep(1)} disabled={creating}>
                 ← Back
               </Button>

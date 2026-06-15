@@ -1,8 +1,9 @@
-import { action, mutation, query } from "./_generated/server";
+import { action, mutation, query, internalMutation } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import { requireMembership } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
+import { leaveGroup as callLineLeaveGroup } from "./lib/lineApi";
 
 export const list = query({
   args: { organizationId: v.id("organizations") },
@@ -222,5 +223,44 @@ export const sendMessage = action({
         sentByName,
       });
     }
+  },
+});
+
+// Mark a group as archived (isActive: false). Called from the leaveGroup action.
+export const archiveInternal = internalMutation({
+  args: { groupChatId: v.id("groupChats"), organizationId: v.id("organizations") },
+  handler: async (ctx, { groupChatId, organizationId }) => {
+    await ctx.db.patch(groupChatId, { isActive: false });
+    await writeAuditLog(ctx, {
+      organizationId,
+      actorType: "user",
+      eventType: "groupChat.left",
+      entityType: "groupChat",
+      entityId: groupChatId,
+      payload: {},
+    });
+  },
+});
+
+// User-triggered: bot leaves the LINE group and archives it.
+export const leaveGroup = action({
+  args: {
+    organizationId: v.id("organizations"),
+    groupChatId: v.id("groupChats"),
+  },
+  handler: async (ctx, { organizationId, groupChatId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const group = await ctx.runQuery(api.groupChats.getForServer, { groupChatId, organizationId });
+    if (!group) throw new Error("Group not found");
+
+    // Tell LINE to remove the bot from the group (best-effort)
+    const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+    if (accessToken) {
+      await callLineLeaveGroup(group.lineGroupId, accessToken);
+    }
+
+    await ctx.runMutation(internal.groupChats.archiveInternal, { groupChatId, organizationId });
   },
 });

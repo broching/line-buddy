@@ -1,8 +1,9 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,9 @@ import {
   IconSearch,
   IconUsers,
   IconFolderOpen,
+  IconChevronDown,
+  IconDoorExit,
+  IconArchive,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -56,19 +60,48 @@ export default function GroupsPage({
     org ? { organizationId: org._id } : "skip"
   ) as GroupWithStats[] | undefined;
 
+  const leaveGroup = useAction(api.groupChats.leaveGroup);
+
   const [showConnect, setShowConnect] = useState(false);
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<GroupWithStats | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   if (!org || !groups) return <GroupsSkeleton />;
 
-  const filtered = groups
-    .filter((g) =>
-      search === "" ||
-      g.displayName.toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+  const sorted = [...groups].sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
-  const activeCount = groups.filter((g) => g.isActive).length;
+  // When searching: show all (active + archived) matching results flat
+  // When not searching: split into active/archived sections
+  const isSearching = search.trim() !== "";
+  const matchesSearch = (g: GroupWithStats) =>
+    g.displayName.toLowerCase().includes(search.toLowerCase());
+
+  const activeGroups   = sorted.filter((g) =>  g.isActive);
+  const archivedGroups = sorted.filter((g) => !g.isActive);
+
+  const searchResults = isSearching ? sorted.filter(matchesSearch) : [];
+
+  const activeCount   = activeGroups.length;
+  const archivedCount = archivedGroups.length;
+
+  async function handleLeave() {
+    if (!leaveTarget || !org) return;
+    setLeaving(true);
+    try {
+      await leaveGroup({
+        organizationId: org._id as Id<"organizations">,
+        groupChatId: leaveTarget._id as Id<"groupChats">,
+      });
+      toast.success(`Left "${leaveTarget.displayName}" — archived.`);
+      setLeaveTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to leave group");
+    } finally {
+      setLeaving(false);
+    }
+  }
 
   return (
     <PaywallGate organizationId={org._id}>
@@ -79,6 +112,7 @@ export default function GroupsPage({
           <h2 className="text-base font-semibold">Group Chats</h2>
           <p className="text-xs text-muted-foreground">
             {activeCount} active group{activeCount !== 1 ? "s" : ""}
+            {archivedCount > 0 && ` · ${archivedCount} archived`}
           </p>
         </div>
         <Button size="sm" onClick={() => setShowConnect(true)}>
@@ -101,37 +135,114 @@ export default function GroupsPage({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto divide-y">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center px-6">
-            <IconMessage2 className="size-10 text-muted-foreground/30" />
-            {search ? (
-              <p className="text-sm text-muted-foreground">No groups matching "{search}"</p>
-            ) : (
-              <>
+      <div className="flex-1 overflow-y-auto">
+        {isSearching ? (
+          /* ── Search results (active + archived flat) ── */
+          searchResults.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center px-6">
+              <IconSearch className="size-8 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No groups matching &ldquo;{search}&rdquo;</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {searchResults.map((g) => (
+                <GroupRow
+                  key={g._id}
+                  group={g}
+                  orgSlug={orgSlug}
+                  onLeave={() => setLeaveTarget(g)}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          /* ── Normal view: active + archived sections ── */
+          <>
+            {/* Active groups */}
+            {activeGroups.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-16 text-center px-6">
+                <IconMessage2 className="size-10 text-muted-foreground/30" />
                 <p className="font-medium text-sm">No groups connected yet</p>
                 <p className="text-xs text-muted-foreground">
-                  Add the LINE bot to a group, then click "Connect group"
+                  Add the LINE bot to a group, then click &ldquo;Connect group&rdquo;
                 </p>
                 <Button size="sm" variant="outline" onClick={() => setShowConnect(true)}>
                   <IconPlus className="size-3.5" />
                   Connect first group
                 </Button>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {activeGroups.map((g) => (
+                  <GroupRow
+                    key={g._id}
+                    group={g}
+                    orgSlug={orgSlug}
+                    onLeave={() => setLeaveTarget(g)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Archived section */}
+            {archivedCount > 0 && (
+              <>
+                <button
+                  onClick={() => setShowArchived((v) => !v)}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/30 transition-colors border-t"
+                >
+                  <IconArchive className="size-3.5" />
+                  Archived ({archivedCount})
+                  <IconChevronDown
+                    className={`size-3.5 ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {showArchived && (
+                  <div className="divide-y">
+                    {archivedGroups.map((g) => (
+                      <GroupRow
+                        key={g._id}
+                        group={g}
+                        orgSlug={orgSlug}
+                        onLeave={() => {}}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
-          </div>
-        ) : (
-          filtered.map((g) => (
-            <GroupRow key={g._id} group={g} orgSlug={orgSlug} />
-          ))
+          </>
         )}
       </div>
 
+      {/* Connect modal */}
       <ConnectGroupModal
         open={showConnect}
         onClose={() => setShowConnect(false)}
         orgId={org._id}
       />
+
+      {/* Leave confirmation dialog */}
+      <Dialog open={!!leaveTarget} onOpenChange={(o) => { if (!o) setLeaveTarget(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Leave group chat?</DialogTitle>
+            <DialogDescription>
+              The bot will leave <strong>{leaveTarget?.displayName}</strong> on LINE and stop
+              monitoring it. Past messages will be preserved in the archive.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setLeaveTarget(null)} disabled={leaving}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleLeave} disabled={leaving}>
+              {leaving ? "Leaving…" : "Leave group"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
     </PaywallGate>
   );
@@ -151,7 +262,15 @@ function formatTime(ts: number | null): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function GroupRow({ group, orgSlug }: { group: GroupWithStats; orgSlug: string }) {
+function GroupRow({
+  group,
+  orgSlug,
+  onLeave,
+}: {
+  group: GroupWithStats;
+  orgSlug: string;
+  onLeave: () => void;
+}) {
   const initials = group.displayName
     .split(" ")
     .slice(0, 2)
@@ -159,61 +278,76 @@ function GroupRow({ group, orgSlug }: { group: GroupWithStats; orgSlug: string }
     .join("");
 
   return (
-    <Link
-      href={`/dashboard/${orgSlug}/groups/${group._id}`}
-      className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors ${
-        !group.isActive ? "opacity-50" : ""
-      }`}
-    >
-      {/* Avatar */}
-      <div className="relative shrink-0">
-        {group.pictureUrl ? (
-          <img
-            src={group.pictureUrl}
-            alt={group.displayName}
-            className="size-12 rounded-full object-cover"
-          />
-        ) : (
-          <div className="size-12 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm">
-            {initials || <IconMessage2 className="size-5" />}
-          </div>
-        )}
-        {!group.isActive && (
-          <div className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full bg-muted-foreground/50 border-2 border-background" />
-        )}
-      </div>
+    <div className={`group/row relative flex items-center ${!group.isActive ? "opacity-60" : ""}`}>
+      {/* Navigable content area */}
+      <Link
+        href={`/dashboard/${orgSlug}/groups/${group._id}`}
+        className="flex flex-1 items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors min-w-0"
+      >
+        {/* Avatar */}
+        <div className="relative shrink-0">
+          {group.pictureUrl ? (
+            <img
+              src={group.pictureUrl}
+              alt={group.displayName}
+              className="size-12 rounded-full object-cover"
+            />
+          ) : (
+            <div className="size-12 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm">
+              {initials || <IconMessage2 className="size-5" />}
+            </div>
+          )}
+          {!group.isActive && (
+            <div className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full bg-muted-foreground/50 border-2 border-background" />
+          )}
+        </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 mb-0.5">
-          <p className="font-semibold text-sm truncate">{group.displayName}</p>
-          <span className="text-[11px] text-muted-foreground shrink-0">
-            {formatTime(group.lastMessageAt)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground truncate flex-1">
-            {group.lastMessagePreview ?? (
-              <span className="italic">No messages yet</span>
-            )}
-          </p>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {group.memberCount != null && group.memberCount > 0 && (
-              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <IconUsers className="size-2.5" />
-                {group.memberCount}
-              </span>
-            )}
-            {group.totalProjectCount > 0 && (
-              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <IconFolderOpen className="size-2.5" />
-                {group.activeProjectCount}/{group.totalProjectCount}
-              </span>
-            )}
+        {/* Content */}
+        <div className="flex-1 min-w-0 pr-8">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <p className="font-semibold text-sm truncate">{group.displayName}</p>
+            <span className="text-[11px] text-muted-foreground shrink-0">
+              {formatTime(group.lastMessageAt)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground truncate flex-1">
+              {group.lastMessagePreview ?? (
+                <span className="italic">No messages yet</span>
+              )}
+            </p>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {group.memberCount != null && group.memberCount > 0 && (
+                <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                  <IconUsers className="size-2.5" />
+                  {group.memberCount}
+                </span>
+              )}
+              {group.totalProjectCount > 0 && (
+                <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                  <IconFolderOpen className="size-2.5" />
+                  {group.activeProjectCount}/{group.totalProjectCount}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+
+      {/* Leave button — only active groups, appears on hover */}
+      {group.isActive && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onLeave();
+          }}
+          title="Leave group"
+          className="absolute right-3 p-1.5 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          <IconDoorExit className="size-4" />
+        </button>
+      )}
+    </div>
   );
 }
 

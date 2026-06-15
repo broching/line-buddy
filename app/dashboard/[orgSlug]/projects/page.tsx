@@ -33,8 +33,11 @@ import {
   IconX,
   IconLayoutList,
   IconLayoutColumns,
+  IconArrowRight,
+  IconTemplate,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { formatDistanceToNow } from "@/lib/date";
 import { PaywallGate } from "@/components/billing/paywall-gate";
 
@@ -227,7 +230,7 @@ function ProjectsContent({ orgSlug }: { orgSlug: string }) {
 
       {/* Empty states */}
       {projects.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center border border-dashed rounded-xl">
+        <div className="flex flex-col items-center gap-4 py-16 text-center border border-dashed rounded-xl">
           <IconFolderOpen className="size-10 text-muted-foreground/30" />
           <div>
             <p className="font-medium">No projects yet</p>
@@ -235,11 +238,27 @@ function ProjectsContent({ orgSlug }: { orgSlug: string }) {
               {activeGroups.length === 0
                 ? "Connect a LINE group first, then create projects here."
                 : templates.length === 0
-                ? "Create a workflow template first."
+                ? "Create a workflow template first, then come back to start a project."
                 : "Create a project or type /new-project in a connected group."}
             </p>
           </div>
-          {activeGroups.length > 0 && templates.length > 0 && (
+          {activeGroups.length === 0 ? (
+            <Button asChild>
+              <Link href={`/dashboard/${orgSlug}/groups`}>
+                <IconMessage2 className="size-4" />
+                Connect a LINE group
+                <IconArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          ) : templates.length === 0 ? (
+            <Button asChild>
+              <Link href={`/dashboard/${orgSlug}/templates`}>
+                <IconTemplate className="size-4" />
+                Create a template
+                <IconArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          ) : (
             <Button variant="outline" onClick={() => setShowCreate(true)}>
               <IconPlus className="size-4" /> Create project
             </Button>

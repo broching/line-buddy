@@ -13,6 +13,19 @@ import {
   type LineLeaveEvent,
 } from "./lib/lineApi";
 
+// Store the bot's reply to a slash command in the messages table so it appears in chat.
+async function storeBotReply(ctx: any, group: { _id: Id<"groupChats">; organizationId: Id<"organizations"> }, replyToken: string, text: string, timestamp: number) {
+  try {
+    await ctx.runMutation(api.messages.storeBotCommandReply, {
+      organizationId: group.organizationId,
+      groupChatId: group._id,
+      text,
+      timestamp,
+      replyToken,
+    });
+  } catch { /* non-critical */ }
+}
+
 const HELP_TEXT = `📋 Line Buddy Commands
 
 /new-project NAME — Create a new project in this group
@@ -81,7 +94,7 @@ async function processEvent(ctx: any, event: LineEvent, accessToken: string) {
       const msg = e as LineMessageEvent;
       if (msg.message.type === "text" && msg.message.text) {
         await handleTextMessage(ctx, msg, accessToken);
-      } else if (msg.message.type === "image" || msg.message.type === "file") {
+      } else if (["image", "file", "video", "audio"].includes(msg.message.type)) {
         await handleMediaMessage(ctx, msg, accessToken);
       } else if (msg.message.type === "sticker") {
         await handleStickerMessage(ctx, msg);
@@ -109,7 +122,7 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
   const text = (event.message.text ?? "").trim();
   const groupId = event.source.groupId ?? event.source.roomId;
 
-  // /connect TOKEN — works before group is registered
+  // /connect TOKEN — works before group is registered; can't store (no groupChatId yet)
   if (text.startsWith("/connect")) {
     const token = text.split(/\s+/)[1]?.toUpperCase();
     if (!token) {
@@ -124,17 +137,32 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
         return;
       }
       const summary = await getGroupSummary(groupId, accessToken);
-      await ctx.runMutation(api.groupChats.connect, {
+      const groupChatId = await ctx.runMutation(api.groupChats.connect, {
         organizationId,
         lineGroupId: groupId,
         displayName: summary.groupName,
         pictureUrl: summary.pictureUrl,
       });
-      await replyMessage(
-        event.replyToken,
-        accessToken,
-        `✅ Connected to ${orgName}!\n\nCreate a project with /new-project NAME. Type /help for all commands.`
-      );
+      const replyText = `✅ Connected to ${orgName}!\n\nCreate a project with /new-project NAME. Type /help for all commands.`;
+      await replyMessage(event.replyToken, accessToken, replyText);
+      // Store the /connect command and the bot's reply now that we have a groupChatId
+      await ctx.runMutation(api.messages.storeFromWebhook, {
+        organizationId,
+        groupChatId,
+        lineMessageId: event.message.id,
+        lineUserId: event.source.userId ?? "unknown",
+        text,
+        messageType: "text",
+        timestamp: event.timestamp,
+        skipAI: true,
+      });
+      await ctx.runMutation(api.messages.storeBotCommandReply, {
+        organizationId,
+        groupChatId,
+        text: replyText,
+        timestamp: event.timestamp,
+        replyToken: event.replyToken,
+      });
       // Proactively fetch all group member profiles so role assignment dropdowns are pre-populated
       ctx.runAction(internal.userLineProfiles.fetchAllGroupMembersInternal, {
         lineGroupId: groupId,
@@ -147,12 +175,6 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
         `❌ Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`
       );
     }
-    return;
-  }
-
-  // /help — works anywhere
-  if (text === "/help") {
-    await replyMessage(event.replyToken, accessToken, HELP_TEXT);
     return;
   }
 
@@ -196,17 +218,52 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
     return;
   }
 
+  // ── Slash commands ──────────────────────────────────────────────────────────
+
+  // /help — works even without a connected group
+  if (text === "/help") {
+    await replyMessage(event.replyToken, accessToken, HELP_TEXT);
+    if (group?.isActive) {
+      await ctx.runMutation(api.messages.storeFromWebhook, {
+        organizationId: group.organizationId,
+        groupChatId: group._id,
+        lineMessageId: event.message.id,
+        lineUserId: event.source.userId ?? "unknown",
+        text,
+        messageType: "text",
+        timestamp: event.timestamp,
+        skipAI: true,
+      });
+      await storeBotReply(ctx, group, event.replyToken, HELP_TEXT, event.timestamp);
+    }
+    return;
+  }
+
   // Commands below require a connected group
   if (!group || !group.isActive) {
     await replyMessage(event.replyToken, accessToken, "This group is not connected to Line Buddy. Type /connect TOKEN to link it.");
     return;
   }
 
+  // Store the user's command message (skipAI — commands are not AI-processable)
+  await ctx.runMutation(api.messages.storeFromWebhook, {
+    organizationId: group.organizationId,
+    groupChatId: group._id,
+    lineMessageId: event.message.id,
+    lineUserId: event.source.userId ?? "unknown",
+    text,
+    messageType: "text",
+    timestamp: event.timestamp,
+    skipAI: true,
+  });
+
   // /new-project NAME
   if (text.startsWith("/new-project")) {
     const projectName = text.replace(/^\/new-project\s*/i, "").trim();
     if (!projectName) {
-      await replyMessage(event.replyToken, accessToken, "Usage: /new-project PROJECT NAME");
+      const reply = "Usage: /new-project PROJECT NAME";
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
       return;
     }
 
@@ -215,7 +272,9 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
     })) as Array<{ _id: string; name: string }>;
 
     if (templates.length === 0) {
-      await replyMessage(event.replyToken, accessToken, "No workflow templates found. Create one in the dashboard first.");
+      const reply = "No workflow templates found. Create one in the dashboard first.";
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
       return;
     }
 
@@ -241,8 +300,11 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
         }
       }
       await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
     } catch (err: unknown) {
-      await replyMessage(event.replyToken, accessToken, `❌ Failed to create project: ${err instanceof Error ? err.message : "Unknown error"}`);
+      const reply = `❌ Failed to create project: ${err instanceof Error ? err.message : "Unknown error"}`;
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
     }
     return;
   }
@@ -254,12 +316,16 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
       | null;
 
     if (!projects || projects.length === 0) {
-      await replyMessage(event.replyToken, accessToken, "No active projects in this group.\n\nCreate one with /new-project NAME");
+      const reply = "No active projects in this group.\n\nCreate one with /new-project NAME";
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
       return;
     }
 
     const list = projects.map((p, i) => `${i + 1}. ${p.name} (Stage ${p.currentStageOrder})`).join("\n");
-    await replyMessage(event.replyToken, accessToken, `📁 Active projects:\n\n${list}`);
+    const reply = `📁 Active projects:\n\n${list}`;
+    await replyMessage(event.replyToken, accessToken, reply);
+    await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
     return;
   }
 
@@ -270,7 +336,9 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
       | null;
 
     if (!projects || projects.length === 0) {
-      await replyMessage(event.replyToken, accessToken, "No active projects. Create one with /new-project NAME");
+      const reply = "No active projects. Create one with /new-project NAME";
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
       return;
     }
 
@@ -305,10 +373,14 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
     }
 
     if (statusLines.length === 0) {
-      await replyMessage(event.replyToken, accessToken, "No active stages found.");
+      const reply = "No active stages found.";
+      await replyMessage(event.replyToken, accessToken, reply);
+      await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
       return;
     }
-    await replyMessage(event.replyToken, accessToken, statusLines.join("\n\n"));
+    const reply = statusLines.join("\n\n");
+    await replyMessage(event.replyToken, accessToken, reply);
+    await storeBotReply(ctx, group, event.replyToken, reply, event.timestamp);
     return;
   }
 }
@@ -320,7 +392,20 @@ async function handleMediaMessage(ctx: any, event: LineMessageEvent, accessToken
   const group = await ctx.runQuery(api.groupChats.getByLineGroupId, { lineGroupId: groupId });
   if (!group || !group.isActive) return;
 
-  const messageType = event.message.type === "image" ? "image" : "file";
+  const lineType = event.message.type as string;
+  const messageType: "image" | "file" | "video" | "audio" =
+    lineType === "image" ? "image"
+    : lineType === "video" ? "video"
+    : lineType === "audio" ? "audio"
+    : "file";
+
+  const typeLabel: Record<string, string> = {
+    image: "[Image]",
+    video: "[Video]",
+    audio: "[Audio]",
+    file: "[File attachment]",
+  };
+
   let storageId: string | undefined;
 
   const media = await getMessageContent(event.message.id, accessToken);
@@ -335,6 +420,11 @@ async function handleMediaMessage(ctx: any, event: LineMessageEvent, accessToken
       if (uploadRes.ok) {
         const { storageId: sid } = await uploadRes.json();
         storageId = sid;
+        // Track file storage against the org's plan limit
+        ctx.runMutation(internal.billing.addStorageBytes, {
+          organizationId: group.organizationId,
+          bytes: media.data.byteLength,
+        }).catch(() => {});
       }
     } catch (err) {
       console.error("[LINE webhook] Failed to upload media to Convex:", err);
@@ -346,7 +436,7 @@ async function handleMediaMessage(ctx: any, event: LineMessageEvent, accessToken
     groupChatId: group._id,
     lineMessageId: event.message.id,
     lineUserId: event.source.userId ?? "unknown",
-    text: messageType === "image" ? "[Image]" : "[File attachment]",
+    text: typeLabel[messageType] ?? "[Attachment]",
     storageId: storageId as Id<"_storage"> | undefined,
     messageType,
     timestamp: event.timestamp,

@@ -54,9 +54,9 @@ export const consume = mutation({
       .withIndex("byToken", (q) => q.eq("token", token))
       .unique();
 
-    if (!record) throw new Error("Invalid token");
-    if (record.consumed) throw new Error("Token already used");
-    if (record.expiresAt < Date.now()) throw new Error("Token expired");
+    if (!record) throw new Error("Invalid token — double-check the code and try again");
+    if (record.consumed) throw new Error("This token has already been used. Generate a new one from the dashboard and try again");
+    if (record.expiresAt < Date.now()) throw new Error("Token expired — generate a new one from the dashboard");
 
     await ctx.db.patch(record._id, { consumed: true });
 

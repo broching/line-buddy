@@ -75,6 +75,14 @@ export async function getGroupMemberProfile(
   return { displayName: data.displayName ?? null, pictureUrl: data.pictureUrl };
 }
 
+export async function leaveGroup(groupId: string, accessToken: string): Promise<void> {
+  const res = await fetch(`${LINE_API}/group/${groupId}/leave`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) console.error("[LINE] leaveGroup failed:", res.status, await res.text());
+}
+
 export async function getGroupSummary(
   groupId: string,
   accessToken: string

@@ -248,6 +248,8 @@ export default defineSchema({
       v.literal("text"),
       v.literal("image"),
       v.literal("file"),
+      v.literal("video"),
+      v.literal("audio"),
       v.literal("sticker"),
       v.literal("other")
     ),

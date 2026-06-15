@@ -25,6 +25,8 @@ export const storeFromWebhook = mutation({
       v.literal("text"),
       v.literal("image"),
       v.literal("file"),
+      v.literal("video"),
+      v.literal("audio"),
       v.literal("sticker"),
       v.literal("other")
     ),
@@ -128,6 +130,36 @@ export const storeBotPush = mutation({
       timestamp,
       processingStatus: "complete",
       routingMethod: "manual",
+    });
+  },
+});
+
+// Store a bot reply sent in response to a slash command. Deduped on replyToken.
+// Called from lineWebhook after replyMessage() so command replies appear in the chat feed.
+export const storeBotCommandReply = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    groupChatId: v.id("groupChats"),
+    text: v.string(),
+    timestamp: v.number(),
+    replyToken: v.string(),
+  },
+  handler: async (ctx, { organizationId, groupChatId, text, timestamp, replyToken }) => {
+    const lineMessageId = `bot_reply_${replyToken}`;
+    const existing = await ctx.db
+      .query("messages")
+      .withIndex("byLineMessageId", (q) => q.eq("lineMessageId", lineMessageId))
+      .unique();
+    if (existing) return existing._id;
+    return ctx.db.insert("messages", {
+      organizationId,
+      groupChatId,
+      lineMessageId,
+      lineUserId: "system:bot",
+      text,
+      messageType: "text",
+      timestamp: timestamp + 500,
+      processingStatus: "complete",
     });
   },
 });
