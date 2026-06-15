@@ -871,7 +871,7 @@ async function runAIPipeline(
             organizationId: context!.organizationId,
             amount: creditsToConsume,
             description: `AI processing (${totalTokens} tokens)`,
-            metadata: { totalTokens, inputTokens: totalInput, outputTokens: totalOutput },
+            metadata: { totalTokens, inputTokens: totalInput, outputTokens: totalOutput, messageId, groupChatId: context!.groupChatId },
           });
           console.log(`[aiChains] Consumed ${creditsToConsume} credit(s) for ${totalTokens} tokens`);
         } catch (err) {

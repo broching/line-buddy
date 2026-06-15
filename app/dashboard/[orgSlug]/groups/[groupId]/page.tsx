@@ -932,7 +932,7 @@ function AITraceModal({
         ) : (
           <>
             {/* Token summary bar */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               <div className="rounded-lg border bg-background p-3 text-center">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Input tokens</p>
                 <p className="text-xl font-bold text-foreground">{trace.totalInputTokens.toLocaleString()}</p>
@@ -948,6 +948,10 @@ function AITraceModal({
               <div className="rounded-lg border bg-background p-3 text-center">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Outcome</p>
                 <p className="text-sm font-semibold text-foreground">{outcomeLabel[trace.outcome] ?? trace.outcome}</p>
+              </div>
+              <div className="rounded-lg border bg-amber-500/10 border-amber-500/20 p-3 text-center">
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-1">Credits used</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">1</p>
               </div>
             </div>
 

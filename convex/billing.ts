@@ -667,7 +667,42 @@ export const getTransactionHistory = query({
       .withIndex("byOrganizationAndCreatedAt", (q) =>
         q.eq("organizationId", organizationId)
       )
+      .filter((q) => q.neq(q.field("type"), "usage"))
       .order("desc")
       .take(limit);
+  },
+});
+
+// ─── Public: AI credit usage history (for analytics page) ────────────────────
+
+export const getUsageHistory = query({
+  args: {
+    organizationId: v.id("organizations"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { organizationId, limit = 50 }) => {
+    await requireMembership(ctx, organizationId);
+    const usageTxs = await ctx.db
+      .query("creditTransactions")
+      .withIndex("byOrganizationAndCreatedAt", (q) =>
+        q.eq("organizationId", organizationId)
+      )
+      .filter((q) => q.eq(q.field("type"), "usage"))
+      .order("desc")
+      .take(limit);
+
+    return Promise.all(
+      usageTxs.map(async (tx) => {
+        const messageId = tx.metadata?.messageId as string | undefined;
+        if (!messageId) return { ...tx, message: null, groupChat: null };
+        const message = await ctx.db.get(messageId as Id<"messages">);
+        const groupChat = message?.groupChatId ? await ctx.db.get(message.groupChatId) : null;
+        return {
+          ...tx,
+          message: message ? { _id: message._id, text: message.text ?? null } : null,
+          groupChat: groupChat ? { _id: groupChat._id, name: groupChat.displayName } : null,
+        };
+      })
+    );
   },
 });

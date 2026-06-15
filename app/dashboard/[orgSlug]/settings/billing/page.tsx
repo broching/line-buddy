@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useCallback } from "react";
+import { use, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { AddPaymentMethodModal } from "@/components/billing/add-payment-method-modal";
@@ -126,6 +126,7 @@ export default function BillingPage({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [pmLoading, setPmLoading] = useState(true);
   const [addCardOpen, setAddCardOpen] = useState(false);
+  const [txLimit, setTxLimit] = useState(20);
 
   const org = useQuery(api.organizations.get, { slug: orgSlug });
 
@@ -144,11 +145,11 @@ export default function BillingPage({
   );
   const transactions = useQuery(
     api.billing.getTransactionHistory,
-    org ? { organizationId: org._id, limit: 20 } : "skip"
+    org ? { organizationId: org._id, limit: txLimit } : "skip"
   );
   const clerkPayments = useQuery(
     api.billing.getClerkPaymentAttempts,
-    org ? { organizationId: org._id, limit: 20 } : "skip"
+    org ? { organizationId: org._id, limit: 50 } : "skip"
   );
 
   const getPaymentMethods = useAction(api.stripe.getPaymentMethods);
@@ -181,8 +182,6 @@ export default function BillingPage({
 
   const seatCount = members?.length ?? 0;
   const seatPct = billing.isActive ? Math.round((seatCount / billing.maxSeats) * 100) : 0;
-  const creditsRemaining = billing.creditsRemaining;
-
   return (
     <div className="flex flex-col gap-6 px-4 lg:px-6 py-2">
       <div>
@@ -192,90 +191,45 @@ export default function BillingPage({
         </p>
       </div>
 
-      {/* ── Row 1: Subscription + Credit Balance ─────────────────────────────── */}
-      <div className={`grid grid-cols-1 gap-4 ${billing.isActive ? "lg:grid-cols-2" : ""}`}>
-        {/* Subscription */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="text-sm font-medium">{getPlanName(billing.planId)}</CardTitle>
-              <CardDescription>
-                {billing.isActive ? `Renews ${periodEnd ?? "—"}` : "No active subscription"}
-              </CardDescription>
-            </div>
-            {billing.isActive ? (
-              <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20 shrink-0">
-                <IconCircleCheck className="size-3" />
-                Active
-              </Badge>
-            ) : billing.status === "past_due" ? (
-              <Badge variant="destructive" className="gap-1 shrink-0">
-                <IconAlertCircle className="size-3" />
-                Past due
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="shrink-0">Free</Badge>
-            )}
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() =>
-                openOrganizationProfile({
-                  appearance: { baseTheme: theme === "dark" ? dark : undefined },
-                })
-              }
-            >
-              <IconCreditCard className="size-4" />
-              Manage subscription
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Credit balance — shown only when subscribed */}
-        {billing.isActive && (
-          <Card>
-            <CardContent className="px-4 pt-4 pb-4 flex flex-col gap-2">
-              {/* Header: icon + label + top-up button */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="size-9 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
-                    <IconCoins className="size-5 text-amber-500" />
-                  </div>
-                  <span className="text-sm font-semibold">AI Credits</span>
-                </div>
-                {org && (
-                  <BuyCreditsQuickButton
-                    organizationId={org._id}
-                    returnPath={`/dashboard/${orgSlug}/settings/billing`}
-                  />
-                )}
-              </div>
-              {/* Balance */}
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-4xl font-bold tabular-nums tracking-tight">
-                  {creditsRemaining.toLocaleString()}
-                </span>
-                <span className="text-base text-amber-500 font-semibold">credits</span>
-              </div>
-              {/* Subtitle */}
-              <p className="text-xs text-muted-foreground -mt-1">
-                {billing.creditsUsed.toLocaleString()} used this period
-                {periodEnd ? ` · resets ${periodEnd}` : ""}
-              </p>
-              {/* Progress bar */}
-              {billing.creditsTotal > 0 && (
-                <Progress
-                  value={100 - billing.creditsPct}
-                  className="h-1 [&>div]:bg-amber-500"
-                />
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      {/* ── Row 1: Subscription ──────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div>
+            <CardTitle className="text-sm font-medium">{getPlanName(billing.planId)}</CardTitle>
+            <CardDescription>
+              {billing.isActive ? `Renews ${periodEnd ?? "—"}` : "No active subscription"}
+            </CardDescription>
+          </div>
+          {billing.isActive ? (
+            <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20 shrink-0">
+              <IconCircleCheck className="size-3" />
+              Active
+            </Badge>
+          ) : billing.status === "past_due" ? (
+            <Badge variant="destructive" className="gap-1 shrink-0">
+              <IconAlertCircle className="size-3" />
+              Past due
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="shrink-0">Free</Badge>
+          )}
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() =>
+              openOrganizationProfile({
+                appearance: { baseTheme: theme === "dark" ? dark : undefined },
+              })
+            }
+          >
+            <IconCreditCard className="size-4" />
+            Manage subscription
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* ── Pricing table — shown when no active subscription ────────────────── */}
       {!billing.isActive && (
@@ -357,6 +311,8 @@ export default function BillingPage({
         <TransactionHistorySection
           transactions={transactions as Transaction[] | undefined}
           clerkPayments={clerkPayments as ClerkPayment[] | undefined}
+          txLimit={txLimit}
+          onLoadMore={() => setTxLimit((l) => l + 20)}
         />
       )}
     </div>
@@ -775,13 +731,28 @@ type MergedEntry =
   | { source: "stripe"; tx: Transaction }
   | { source: "clerk"; payment: ClerkPayment };
 
+function formatTxDate(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function TransactionHistorySection({
   transactions,
   clerkPayments,
+  txLimit,
+  onLoadMore,
 }: {
   transactions: Transaction[] | undefined;
   clerkPayments: ClerkPayment[] | undefined;
+  txLimit: number;
+  onLoadMore: () => void;
 }) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoading = transactions === undefined && clerkPayments === undefined;
 
   const merged: MergedEntry[] = [
@@ -793,14 +764,30 @@ function TransactionHistorySection({
     return dateB - dateA;
   });
 
+  // Stripe transactions may have more; show load-more when count hits the limit
+  const stripeCount = transactions?.length ?? 0;
+  const hasMore = stripeCount >= txLimit;
+
+  // Infinite scroll: trigger onLoadMore when sentinel becomes visible
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) onLoadMore(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore]);
+
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <IconReceipt className="size-4 text-muted-foreground" />
-          Recent transactions
+          Transaction history
         </CardTitle>
-        <CardDescription>Credit top-ups, usage, and subscription payments</CardDescription>
+        <CardDescription>Credit top-ups and subscription payments</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -810,54 +797,63 @@ function TransactionHistorySection({
         ) : merged.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">No transactions yet.</p>
         ) : (
-          <div className="flex flex-col divide-y">
-            {merged.map((entry) => {
-              if (entry.source === "stripe") {
-                const tx = entry.tx;
-                return (
-                  <div key={`stripe-${tx._id}`} className="flex items-center justify-between py-3 gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Badge variant="outline" className={`text-xs shrink-0 ${txBadgeClass(tx.type)}`}>
-                        {txTypeLabel(tx.type)}
-                      </Badge>
-                      <span className="text-sm truncate text-muted-foreground">{tx.description}</span>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="flex items-center gap-1">
-                        <IconCoins className="size-3 text-amber-500 shrink-0" />
-                        <span className={`text-sm font-semibold tabular-nums ${tx.amount > 0 ? "text-green-600" : "text-foreground"}`}>
-                          {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()}
+          <>
+            <div className="flex flex-col divide-y">
+              {merged.map((entry) => {
+                if (entry.source === "stripe") {
+                  const tx = entry.tx;
+                  return (
+                    <div key={`stripe-${tx._id}`} className="flex items-center justify-between py-3 gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Badge variant="outline" className={`text-xs shrink-0 ${txBadgeClass(tx.type)}`}>
+                          {txTypeLabel(tx.type)}
+                        </Badge>
+                        <span className="text-sm truncate text-muted-foreground">{tx.description}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-1">
+                          <IconCoins className="size-3 text-amber-500 shrink-0" />
+                          <span className={`text-sm font-semibold tabular-nums ${tx.amount > 0 ? "text-green-600" : "text-foreground"}`}>
+                            {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground w-32 text-right hidden sm:block">
+                          {formatTxDate(tx.createdAt)}
                         </span>
                       </div>
-                      <span className="text-xs text-muted-foreground w-20 text-right hidden sm:block">
-                        {new Date(tx.createdAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                    </div>
+                  );
+                }
+
+                const p = entry.payment;
+                return (
+                  <div key={`clerk-${p.paymentId}`} className="flex items-center justify-between py-3 gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Badge variant="outline" className="text-xs shrink-0 bg-violet-500/10 text-violet-600 border-violet-500/20">
+                        Subscription
+                      </Badge>
+                      <span className="text-sm truncate text-muted-foreground">{p.planName}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-semibold tabular-nums text-foreground">
+                        {p.currencySymbol}{p.amountFormatted}
+                      </span>
+                      <span className="text-xs text-muted-foreground w-32 text-right hidden sm:block">
+                        {formatTxDate(p.paidAt)}
                       </span>
                     </div>
                   </div>
                 );
-              }
+              })}
+            </div>
 
-              const p = entry.payment;
-              return (
-                <div key={`clerk-${p.paymentId}`} className="flex items-center justify-between py-3 gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Badge variant="outline" className="text-xs shrink-0 bg-violet-500/10 text-violet-600 border-violet-500/20">
-                      Subscription
-                    </Badge>
-                    <span className="text-sm truncate text-muted-foreground">{p.planName}</span>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm font-semibold tabular-nums text-foreground">
-                      {p.currencySymbol}{p.amountFormatted}
-                    </span>
-                    <span className="text-xs text-muted-foreground w-20 text-right hidden sm:block">
-                      {new Date(p.paidAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            {/* Infinite scroll sentinel */}
+            {hasMore && (
+              <div ref={sentinelRef} className="flex justify-center py-4">
+                <Skeleton className="h-4 w-24" />
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -1,8 +1,9 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import {
   Bar,
   BarChart,
@@ -16,11 +17,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import {
   IconBrain,
   IconCircleCheck,
+  IconCoins,
+  IconExternalLink,
   IconFolderOpen,
   IconMessage2,
 } from "@tabler/icons-react";
@@ -107,6 +112,9 @@ export default function AnalyticsPage({
 
       {/* ── Credit & storage usage ───────────────────────────────────────────── */}
       <CreditUsageCards organizationId={org._id} topUpUrl={`/dashboard/${orgSlug}/settings/billing`} />
+
+      {/* ── AI credit usage history ──────────────────────────────────────────── */}
+      <CreditUsageHistory organizationId={org._id} orgSlug={orgSlug} />
 
       {/* ── Top metric cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -272,6 +280,126 @@ export default function AnalyticsPage({
       </div>
     </div>
     </PaywallGate>
+  );
+}
+
+// ─── Credit usage history ─────────────────────────────────────────────────────
+
+type UsageEntry = {
+  _id: Id<"creditTransactions">;
+  amount: number;
+  description: string;
+  createdAt: number;
+  metadata?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
+  message: { _id: Id<"messages">; text: string | null } | null;
+  groupChat: { _id: Id<"groupChats">; name: string } | null;
+};
+
+function CreditUsageHistory({
+  organizationId,
+  orgSlug,
+}: {
+  organizationId: Id<"organizations">;
+  orgSlug: string;
+}) {
+  const [limit, setLimit] = useState(20);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const entries = useQuery(api.billing.getUsageHistory, { organizationId, limit }) as UsageEntry[] | undefined;
+
+  const hasMore = (entries?.length ?? 0) >= limit;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (es) => { if (es[0]?.isIntersecting) setLimit((l) => l + 20); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <IconCoins className="size-4 text-amber-500" />
+          AI credit usage
+        </CardTitle>
+        <CardDescription>One credit per AI pipeline run — click a message to view it in the group chat</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {entries === undefined ? (
+          <div className="flex flex-col gap-2">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+          </div>
+        ) : entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">No AI usage yet.</p>
+        ) : (
+          <>
+            <div className="flex flex-col divide-y">
+              {entries.map((entry) => {
+                const tokens = entry.metadata?.totalTokens;
+                const groupLink = entry.groupChat && entry.message
+                  ? `/dashboard/${orgSlug}/groups/${entry.groupChat._id}`
+                  : null;
+                const preview = entry.message?.text
+                  ? entry.message.text.slice(0, 60) + (entry.message.text.length > 60 ? "…" : "")
+                  : null;
+
+                return (
+                  <div key={entry._id} className="flex items-center justify-between py-3 gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Badge variant="outline" className="text-xs shrink-0 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                        Usage
+                      </Badge>
+                      <div className="min-w-0">
+                        {groupLink ? (
+                          <Link
+                            href={groupLink}
+                            className="flex items-center gap-1 text-sm text-foreground hover:underline underline-offset-2 group truncate"
+                          >
+                            <span className="truncate">
+                              {entry.groupChat?.name}
+                              {preview && <span className="text-muted-foreground"> — {preview}</span>}
+                            </span>
+                            <IconExternalLink className="size-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            {tokens ? `AI processing (${tokens.toLocaleString()} tokens)` : "AI processing"}
+                          </span>
+                        )}
+                        {tokens && groupLink && (
+                          <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-1">
+                        <IconCoins className="size-3 text-amber-500 shrink-0" />
+                        <span className="text-sm font-semibold tabular-nums text-foreground">
+                          {Math.abs(entry.amount)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground w-32 text-right hidden sm:block">
+                        {new Date(entry.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {hasMore && (
+              <div ref={sentinelRef} className="flex justify-center py-4">
+                <Skeleton className="h-4 w-24" />
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
