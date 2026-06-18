@@ -1,6 +1,7 @@
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { decryptSecret } from "./lib/crypto";
 import {
   verifyLineSignature,
   replyMessage,
@@ -12,6 +13,9 @@ import {
   type LineJoinEvent,
   type LineLeaveEvent,
 } from "./lib/lineApi";
+
+type LineAgent = "managed" | "byok";
+const BYOK_PREFIX = "/webhooks/line/";
 
 // Store the bot's reply to a slash command in the messages table so it appears in chat.
 async function storeBotReply(ctx: any, group: { _id: Id<"groupChats">; organizationId: Id<"organizations"> }, replyToken: string, text: string, timestamp: number) {
@@ -35,18 +39,42 @@ const HELP_TEXT = `📋 Line Buddy Commands
 /help — Show this message`;
 
 export const handleLineWebhook = httpAction(async (ctx, request) => {
+  const pathname = new URL(request.url).pathname;
   const body = await request.text();
   const signature = request.headers.get("x-line-signature") ?? "";
 
-  const channelSecret = process.env.LINE_CHANNEL_SECRET?.trim();
-  const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
-
-  if (!channelSecret || !accessToken) {
-    console.error("[LINE webhook] Missing LINE_CHANNEL_SECRET or LINE_CHANNEL_ACCESS_TOKEN env vars");
-    return new Response(JSON.stringify({ received: true }), {
+  const ack = () =>
+    new Response(JSON.stringify({ received: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+
+  let accessToken: string | undefined;
+  let channelSecret: string | undefined;
+  let agent: LineAgent = "managed";
+
+  if (pathname.startsWith(BYOK_PREFIX)) {
+    // Bring-your-own LINE channel — resolve the org's encrypted creds by route token.
+    const routeToken = pathname.slice(BYOK_PREFIX.length);
+    const channel = await ctx.runQuery(internal.lineChannels.getByRouteToken, { routeToken });
+    if (!channel?.accessTokenEnc || !channel?.channelSecretEnc) return ack();
+    try {
+      accessToken = await decryptSecret(channel.accessTokenEnc);
+      channelSecret = await decryptSecret(channel.channelSecretEnc);
+    } catch {
+      return ack();
+    }
+    agent = "byok";
+  } else {
+    // Shared managed LINE bot — env creds.
+    channelSecret = process.env.LINE_CHANNEL_SECRET?.trim();
+    accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+    agent = "managed";
+  }
+
+  if (!channelSecret || !accessToken) {
+    console.error("[LINE webhook] Missing channel credentials");
+    return ack();
   }
 
   if (!(await verifyLineSignature(body, channelSecret, signature))) {
@@ -69,19 +97,16 @@ export const handleLineWebhook = httpAction(async (ctx, request) => {
 
   for (const event of events) {
     try {
-      await processEvent(ctx, event, accessToken);
+      await processEvent(ctx, event, accessToken, agent);
     } catch (err) {
       console.error(`[LINE webhook] Event error type=${(event as any).type}:`, err);
     }
   }
 
-  return new Response(JSON.stringify({ received: true }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return ack();
 });
 
-async function processEvent(ctx: any, event: LineEvent, accessToken: string) {
+async function processEvent(ctx: any, event: LineEvent, accessToken: string, agent: LineAgent) {
   const e = event as any;
   switch (e.type) {
     case "join":
@@ -93,7 +118,7 @@ async function processEvent(ctx: any, event: LineEvent, accessToken: string) {
     case "message": {
       const msg = e as LineMessageEvent;
       if (msg.message.type === "text" && msg.message.text) {
-        await handleTextMessage(ctx, msg, accessToken);
+        await handleTextMessage(ctx, msg, accessToken, agent);
       } else if (["image", "file", "video", "audio"].includes(msg.message.type)) {
         await handleMediaMessage(ctx, msg, accessToken);
       } else if (msg.message.type === "sticker") {
@@ -118,7 +143,7 @@ async function handleLeave(ctx: any, event: LineLeaveEvent) {
   if (groupId) await ctx.runMutation(api.groupChats.deactivate, { lineGroupId: groupId });
 }
 
-async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken: string) {
+async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken: string, agent: LineAgent) {
   const text = (event.message.text ?? "").trim();
   const groupId = event.source.groupId ?? event.source.roomId;
 
@@ -142,6 +167,8 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
         lineGroupId: groupId,
         displayName: summary.groupName,
         pictureUrl: summary.pictureUrl,
+        channel: "line",
+        lineAgent: agent,
       });
       const replyText = `✅ Connected to ${orgName}!\n\nCreate a project with /new-project NAME. Type /help for all commands.`;
       await replyMessage(event.replyToken, accessToken, replyText);
@@ -188,6 +215,13 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
     const activeProjects = await ctx.runQuery(api.projects.getActiveByGroup, { lineGroupId: groupId });
     const hasActiveProjects = Array.isArray(activeProjects) && activeProjects.length > 0;
 
+    // Both managed and BYOK groups stay visible; only the org's selected LINE mode is
+    // AI-processed. Off-mode messages are stored for history only.
+    const orgLineMode = await ctx.runQuery(internal.organizations.getLineModeInternal, {
+      organizationId: group.organizationId,
+    });
+    const isActiveMode = orgLineMode === agent;
+
     const storePromise = ctx.runMutation(api.messages.storeFromWebhook, {
       organizationId: group.organizationId,
       groupChatId: group._id,
@@ -198,7 +232,7 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
       timestamp: event.timestamp,
       replyToken: event.replyToken || undefined,
       quoteToken: event.message.quoteToken || undefined,
-      skipAI: !hasActiveProjects,
+      skipAI: !hasActiveProjects || !isActiveMode,
     });
 
     const profilePromise = (async () => {

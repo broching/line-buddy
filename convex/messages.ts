@@ -16,6 +16,7 @@ export const storeFromWebhook = mutation({
   args: {
     organizationId: v.id("organizations"),
     groupChatId: v.id("groupChats"),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))),
     projectId: v.optional(v.id("projects")),
     lineMessageId: v.string(),
     lineUserId: v.string(),

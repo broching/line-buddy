@@ -120,6 +120,35 @@ export async function getAllGroupMemberIds(
   return memberIds;
 }
 
+// Validates a channel access token and returns the bot's profile (null if invalid).
+export async function getBotInfo(
+  accessToken: string
+): Promise<{ displayName: string; basicId?: string; userId?: string; pictureUrl?: string } | null> {
+  const res = await fetch(`${LINE_API}/info`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return {
+    displayName: data.displayName ?? "LINE bot",
+    basicId: data.basicId,
+    userId: data.userId,
+    pictureUrl: data.pictureUrl,
+  };
+}
+
+// Returns the webhook endpoint configured on the channel + whether it's active.
+export async function getWebhookEndpoint(
+  accessToken: string
+): Promise<{ endpoint: string | null; active: boolean } | null> {
+  const res = await fetch(`${LINE_API}/channel/webhook/endpoint`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return { endpoint: data.endpoint ?? null, active: !!data.active };
+}
+
 // Returns Uint8Array instead of Buffer — compatible with both V8 and Node runtimes
 export async function getMessageContent(
   messageId: string,

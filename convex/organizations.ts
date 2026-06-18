@@ -114,6 +114,24 @@ export const create = mutation({
   },
 });
 
+// Internal: the org's selected WhatsApp delivery mode (defaults to "byo").
+export const getWhatsappModeInternal = internalQuery({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    const org = await ctx.db.get(organizationId);
+    return (org?.whatsappMode ?? "byo") as "managed" | "byo";
+  },
+});
+
+// Internal: the org's selected LINE delivery mode (defaults to "managed").
+export const getLineModeInternal = internalQuery({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    const org = await ctx.db.get(organizationId);
+    return (org?.lineMode ?? "managed") as "managed" | "byok";
+  },
+});
+
 export const get = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {

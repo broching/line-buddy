@@ -28,17 +28,24 @@ import {
   IconChevronDown,
   IconDoorExit,
   IconArchive,
+  IconBrandWhatsapp,
+  IconBrandLine,
 } from "@tabler/icons-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useEffect } from "react";
 import { PaywallGate } from "@/components/billing/paywall-gate";
+import { MANAGED_WHATSAPP_NUMBER } from "@/lib/botLinks";
 
 type GroupWithStats = {
   _id: string;
   displayName: string;
   pictureUrl?: string;
   lineGroupId: string;
+  channel?: "line" | "whatsapp";
+  lineAgent?: "managed" | "byok";
+  whatsappAgent?: "managed" | "byo";
   isActive: boolean;
   memberCount?: number;
   activeProjectCount: number;
@@ -67,13 +74,15 @@ export default function GroupsPage({
   const [showArchived, setShowArchived] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<GroupWithStats | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [lineOpen, setLineOpen] = useState(true);
+  const [waOpen, setWaOpen] = useState(true);
 
   if (!org || !groups) return <GroupsSkeleton />;
 
   const sorted = [...groups].sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
 
   // When searching: show all (active + archived) matching results flat
-  // When not searching: split into active/archived sections
+  // When not searching: split into per-channel sections
   const isSearching = search.trim() !== "";
   const matchesSearch = (g: GroupWithStats) =>
     g.displayName.toLowerCase().includes(search.toLowerCase());
@@ -85,6 +94,14 @@ export default function GroupsPage({
 
   const activeCount   = activeGroups.length;
   const archivedCount = archivedGroups.length;
+
+  // Per-channel splits (active only; archived stays in the shared section below)
+  const activeLine = activeGroups.filter((g) => (g.channel ?? "line") === "line");
+  const lineManaged = activeLine.filter((g) => (g.lineAgent ?? "managed") === "managed");
+  const lineByok = activeLine.filter((g) => (g.lineAgent ?? "managed") === "byok");
+  const activeWa = activeGroups.filter((g) => g.channel === "whatsapp");
+  const waManaged = activeWa.filter((g) => (g.whatsappAgent ?? "byo") === "managed");
+  const waByo = activeWa.filter((g) => (g.whatsappAgent ?? "byo") === "byo");
 
   async function handleLeave() {
     if (!leaveTarget || !org) return;
@@ -155,34 +172,97 @@ export default function GroupsPage({
               ))}
             </div>
           )
+        ) : groups.length === 0 ? (
+          /* ── Empty state ── */
+          <div className="flex flex-col items-center gap-3 py-16 text-center px-6">
+            <IconMessage2 className="size-10 text-muted-foreground/30" />
+            <p className="font-medium text-sm">No groups connected yet</p>
+            <p className="text-xs text-muted-foreground">
+              Add a bot to a group, then click &ldquo;Connect group&rdquo;
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setShowConnect(true)}>
+              <IconPlus className="size-3.5" />
+              Connect first group
+            </Button>
+          </div>
         ) : (
-          /* ── Normal view: active + archived sections ── */
+          /* ── Normal view: per-channel sections + archived ── */
           <>
-            {/* Active groups */}
-            {activeGroups.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-16 text-center px-6">
-                <IconMessage2 className="size-10 text-muted-foreground/30" />
-                <p className="font-medium text-sm">No groups connected yet</p>
-                <p className="text-xs text-muted-foreground">
-                  Add the LINE bot to a group, then click &ldquo;Connect group&rdquo;
-                </p>
-                <Button size="sm" variant="outline" onClick={() => setShowConnect(true)}>
-                  <IconPlus className="size-3.5" />
-                  Connect first group
-                </Button>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {activeGroups.map((g) => (
-                  <GroupRow
-                    key={g._id}
-                    group={g}
-                    orgSlug={orgSlug}
-                    onLeave={() => setLeaveTarget(g)}
-                  />
-                ))}
-              </div>
-            )}
+            {/* LINE */}
+            <ChannelSection
+              icon={<IconBrandLine className="size-4 text-[#06C755]" />}
+              title="LINE"
+              count={activeLine.length}
+              open={lineOpen}
+              onToggle={() => setLineOpen((v) => !v)}
+            >
+              <Tabs defaultValue="managed" className="gap-0">
+                <TabsList className="mx-3 mt-2">
+                  <TabsTrigger value="managed">LeadMighty&apos;s bot ({lineManaged.length})</TabsTrigger>
+                  <TabsTrigger value="byok">Your own bot ({lineByok.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="managed">
+                  {lineManaged.length === 0 ? (
+                    <EmptyHint text="No groups on the managed bot yet" />
+                  ) : (
+                    <div className="divide-y">
+                      {lineManaged.map((g) => (
+                        <GroupRow key={g._id} group={g} orgSlug={orgSlug} onLeave={() => setLeaveTarget(g)} />
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="byok">
+                  {lineByok.length === 0 ? (
+                    <EmptyHint text="No groups on your own bot yet" />
+                  ) : (
+                    <div className="divide-y">
+                      {lineByok.map((g) => (
+                        <GroupRow key={g._id} group={g} orgSlug={orgSlug} onLeave={() => setLeaveTarget(g)} />
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </ChannelSection>
+
+            {/* WhatsApp */}
+            <ChannelSection
+              icon={<IconBrandWhatsapp className="size-4 text-green-600" />}
+              title="WhatsApp"
+              count={activeWa.length}
+              open={waOpen}
+              onToggle={() => setWaOpen((v) => !v)}
+            >
+              <Tabs defaultValue="managed" className="gap-0">
+                <TabsList className="mx-3 mt-2">
+                  <TabsTrigger value="managed">LeadMighty&apos;s agent ({waManaged.length})</TabsTrigger>
+                  <TabsTrigger value="byo">Your own agent ({waByo.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="managed">
+                  {waManaged.length === 0 ? (
+                    <EmptyHint text="No groups on the managed bot yet" />
+                  ) : (
+                    <div className="divide-y">
+                      {waManaged.map((g) => (
+                        <GroupRow key={g._id} group={g} orgSlug={orgSlug} onLeave={() => setLeaveTarget(g)} />
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="byo">
+                  {waByo.length === 0 ? (
+                    <EmptyHint text="No groups on your own number yet" />
+                  ) : (
+                    <div className="divide-y">
+                      {waByo.map((g) => (
+                        <GroupRow key={g._id} group={g} orgSlug={orgSlug} onLeave={() => setLeaveTarget(g)} />
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </ChannelSection>
 
             {/* Archived section */}
             {archivedCount > 0 && (
@@ -221,6 +301,7 @@ export default function GroupsPage({
         open={showConnect}
         onClose={() => setShowConnect(false)}
         orgId={org._id}
+        whatsappMode={org.whatsappMode}
       />
 
       {/* Leave confirmation dialog */}
@@ -229,8 +310,9 @@ export default function GroupsPage({
           <DialogHeader>
             <DialogTitle>Leave group chat?</DialogTitle>
             <DialogDescription>
-              The bot will leave <strong>{leaveTarget?.displayName}</strong> on LINE and stop
-              monitoring it. Past messages will be preserved in the archive.
+              The bot will stop monitoring <strong>{leaveTarget?.displayName}</strong>
+              {leaveTarget?.channel === "whatsapp" ? "" : " on LINE"}. Past messages will be
+              preserved in the archive.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
@@ -305,7 +387,14 @@ function GroupRow({
         {/* Content */}
         <div className="flex-1 min-w-0 pr-8">
           <div className="flex items-center justify-between gap-2 mb-0.5">
-            <p className="font-semibold text-sm truncate">{group.displayName}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {group.channel === "whatsapp" ? (
+                <IconBrandWhatsapp className="size-3.5 shrink-0 text-green-600" />
+              ) : (
+                <IconBrandLine className="size-3.5 shrink-0 text-[#06C755]" />
+              )}
+              <p className="font-semibold text-sm truncate">{group.displayName}</p>
+            </div>
             <span className="text-[11px] text-muted-foreground shrink-0">
               {formatTime(group.lastMessageAt)}
             </span>
@@ -357,21 +446,31 @@ function ConnectGroupModal({
   open,
   onClose,
   orgId,
+  whatsappMode,
 }: {
   open: boolean;
   onClose: () => void;
   orgId: string;
+  whatsappMode?: "managed" | "byo";
 }) {
   const generateToken = useMutation(api.connectTokens.generate);
   const activeTokens = useQuery(api.connectTokens.listActive, {
     organizationId: orgId as any,
   });
 
+  const [channel, setChannel] = useState<"line" | "whatsapp">("line");
   const [token, setToken] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number>(0);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState("");
+
+  const isWa = channel === "whatsapp";
+  const addBotStep = isWa
+    ? whatsappMode === "managed"
+      ? `Add the LeadMighty bot (${MANAGED_WHATSAPP_NUMBER}) to your WhatsApp group`
+      : "Add your connected WhatsApp number to the group"
+    : "Add your LINE bot to the group chat";
 
   useEffect(() => {
     if (activeTokens && activeTokens.length > 0) {
@@ -426,17 +525,39 @@ function ConnectGroupModal({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect a LINE group</DialogTitle>
+          <DialogTitle>Connect a group</DialogTitle>
           <DialogDescription>
-            Generate a token, add the bot to your LINE group, then type the command in the group.
+            Generate a token, add the bot to your group, then send the command in the chat.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-5 pt-2">
+          {/* Channel toggle */}
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+            <button
+              onClick={() => setChannel("line")}
+              className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-colors ${
+                !isWa ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <IconBrandLine className="size-4 text-[#06C755]" />
+              LINE
+            </button>
+            <button
+              onClick={() => setChannel("whatsapp")}
+              className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-colors ${
+                isWa ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <IconBrandWhatsapp className="size-4 text-green-600" />
+              WhatsApp
+            </button>
+          </div>
+
           <ol className="text-sm text-muted-foreground flex flex-col gap-2 list-decimal list-inside">
-            <li>Add your LINE bot to the group chat</li>
+            <li>{addBotStep}</li>
             <li>Generate a connect token below</li>
-            <li>Type the command in the LINE group</li>
+            <li>Send the command in the {isWa ? "WhatsApp" : "LINE"} group</li>
           </ol>
 
           {token && !isExpired ? (
@@ -469,7 +590,7 @@ function ConnectGroupModal({
 
               <p className="text-xs text-center text-muted-foreground">
                 The command <code className="bg-muted px-1 py-0.5 rounded">/connect {token}</code> will be copied to clipboard.
-                Paste it in your LINE group.
+                Paste it in your {isWa ? "WhatsApp" : "LINE"} group.
               </p>
             </div>
           ) : (
@@ -481,6 +602,43 @@ function ConnectGroupModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+function ChannelSection({
+  icon,
+  title,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-b">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium hover:bg-muted/30 transition-colors"
+      >
+        {icon}
+        {title}
+        <span className="text-xs text-muted-foreground">({count})</span>
+        <IconChevronDown
+          className={`size-4 ml-auto text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return <p className="px-4 py-6 text-xs text-muted-foreground text-center">{text}</p>;
 }
 
 function GroupsSkeleton() {

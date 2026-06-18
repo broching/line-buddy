@@ -10,6 +10,8 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { LLMResult } from "@langchain/core/outputs";
 import { z } from "zod";
+import { sendGroupMessage } from "./lib/messaging";
+import { resolveSendCreds, type ChannelSendInfo } from "./lib/channelContext";
 
 // ─── Model factory ────────────────────────────────────────────────────────────
 
@@ -178,7 +180,7 @@ type Context = {
   organizationId: Id<"organizations">;
   activeProjects: ProjectWithStages[];
   recentMessages: Array<{ text: string; tag: string; projectId: Id<"projects"> | null }>;
-  lineContext: { lineGroupId: string; lineAccessToken: string | null } | null;
+  channelContext: ChannelSendInfo | null;
 };
 
 // ─── Chain 1: Intent Classifier ───────────────────────────────────────────────
@@ -473,44 +475,19 @@ Rules:
   };
 }
 
-// ─── LINE messaging helpers ───────────────────────────────────────────────────
+// ─── Outbound reply helper (channel-agnostic) ─────────────────────────────────
 
-async function sendLineMessage(
-  lineGroupId: string,
-  accessToken: string,
+// Sends a bot reply to the group using whichever channel the group is on.
+async function replyToGroup(
+  channelContext: ChannelSendInfo | null,
   text: string,
   replyToken?: string,
   quoteToken?: string
-): Promise<boolean> {
-  // quoteToken makes the bot's message visually appear as a threaded reply to the user's message
-  const message: Record<string, string> = { type: "text", text };
-  if (quoteToken) message.quoteToken = quoteToken;
-
-  if (replyToken) {
-    const res = await fetch("https://api.line.me/v2/bot/message/reply", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ replyToken, messages: [message] }),
-    });
-    if (res.ok) return true;
-    // Reply token expired (~30s TTL) — fall through to push with quoteToken
-    const errBody = await res.text();
-    console.warn(`[LINE] replyToken expired or invalid (${res.status}), falling back to push: ${errBody}`);
-  }
-
-  // Push message — quoteToken still works here so the reply is visually threaded
-  const res = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ to: lineGroupId, messages: [message] }),
-  });
-  return res.ok;
+): Promise<void> {
+  if (!channelContext) return;
+  const creds = await resolveSendCreds(channelContext);
+  if (!creds) return;
+  await sendGroupMessage(creds, channelContext.providerGroupId, { text, replyToken, quoteToken });
 }
 
 // ─── Batch entry point: fired by the 10s message-grouping scheduler ───────────
@@ -652,15 +629,7 @@ async function runAIPipeline(
         }),
       });
 
-      if (context.lineContext?.lineAccessToken) {
-        await sendLineMessage(
-          context.lineContext.lineGroupId,
-          context.lineContext.lineAccessToken,
-          answer,
-          replyToken,
-          quoteToken
-        );
-      }
+      await replyToGroup(context.channelContext, answer, replyToken, quoteToken);
       await ctx.runMutation(internal.ai.storeBotMessage, {
         organizationId: context.organizationId,
         groupChatId: context.groupChatId,
@@ -718,21 +687,13 @@ async function runAIPipeline(
               .join("\n");
             const clarification = `Which project is this for?\n\nActive projects:\n${projectList}\n\nReply with the project number or use #ProjectName at the start of your message.`;
 
-            if (context.lineContext?.lineAccessToken) {
-              await sendLineMessage(
-                context.lineContext.lineGroupId,
-                context.lineContext.lineAccessToken,
-                clarification,
-                replyToken,
-                quoteToken
-              );
-              await ctx.runMutation(internal.ai.storeBotMessage, {
-                organizationId: context.organizationId,
-                groupChatId: context.groupChatId,
-                text: clarification,
-                timestamp: Date.now(),
-              });
-            }
+            await replyToGroup(context.channelContext, clarification, replyToken, quoteToken);
+            await ctx.runMutation(internal.ai.storeBotMessage, {
+              organizationId: context.organizationId,
+              groupChatId: context.groupChatId,
+              text: clarification,
+              timestamp: Date.now(),
+            });
             return "clarification_sent";
           }
           return "no_action";

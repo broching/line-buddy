@@ -11,6 +11,7 @@ import {
   IconTemplate,
   IconBrightness,
   IconCreditCard,
+  IconPlugConnected,
 } from "@tabler/icons-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { usePathname, useRouter } from "next/navigation";
@@ -121,6 +122,7 @@ export function OrgSidebar({
   const settingsNav: NavItem[] = isAdmin
     ? [
         { title: "Organization", url: `${base}/settings/organization`, icon: IconBuilding },
+        { title: "Channels", url: `${base}/settings/channels`, icon: IconPlugConnected },
         { title: "Billing", url: `${base}/settings/billing`, icon: IconCreditCard },
       ]
     : [];

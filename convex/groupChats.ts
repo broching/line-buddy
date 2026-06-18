@@ -1,9 +1,11 @@
-import { action, mutation, query, internalMutation } from "./_generated/server";
+import { action, mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import { requireMembership } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
 import { leaveGroup as callLineLeaveGroup } from "./lib/lineApi";
+import { sendGroupMessage } from "./lib/messaging";
+import { buildChannelSendInfo, resolveSendCreds } from "./lib/channelContext";
 
 export const list = query({
   args: { organizationId: v.id("organizations") },
@@ -67,7 +69,7 @@ export const get = query({
   },
 });
 
-// Called from the LINE webhook — no user auth.
+// Called from the LINE / WhatsApp webhook — no user auth.
 // Creates or reactivates a group chat record after a successful /connect flow.
 export const connect = mutation({
   args: {
@@ -75,8 +77,12 @@ export const connect = mutation({
     lineGroupId: v.string(),
     displayName: v.string(),
     pictureUrl: v.optional(v.string()),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))),
+    lineAgent: v.optional(v.union(v.literal("managed"), v.literal("byok"))),
+    whatsappAgent: v.optional(v.union(v.literal("managed"), v.literal("byo"))),
+    whatsappSessionId: v.optional(v.id("whatsappSessions")),
   },
-  handler: async (ctx, { organizationId, lineGroupId, displayName, pictureUrl }) => {
+  handler: async (ctx, { organizationId, lineGroupId, displayName, pictureUrl, channel, lineAgent, whatsappAgent, whatsappSessionId }) => {
     // Check if group already connected (possibly to another org — reject)
     const existing = await ctx.db
       .query("groupChats")
@@ -93,6 +99,10 @@ export const connect = mutation({
         displayName,
         pictureUrl,
         connectedAt: Date.now(),
+        ...(channel ? { channel } : {}),
+        ...(lineAgent ? { lineAgent } : {}),
+        ...(whatsappAgent ? { whatsappAgent } : {}),
+        ...(whatsappSessionId ? { whatsappSessionId } : {}),
       });
       return existing._id;
     }
@@ -104,6 +114,10 @@ export const connect = mutation({
       pictureUrl,
       isActive: true,
       connectedAt: Date.now(),
+      ...(channel ? { channel } : {}),
+      ...(lineAgent ? { lineAgent } : {}),
+      ...(whatsappAgent ? { whatsappAgent } : {}),
+      ...(whatsappSessionId ? { whatsappSessionId } : {}),
     });
 
     await writeAuditLog(ctx, {
@@ -162,8 +176,17 @@ export const getForServer = query({
   },
 });
 
-// Send a message from the dashboard to a LINE group.
-// Replaces the Next.js /api/groups/[groupChatId]/send-message route.
+// Internal: channel send info for a group (used by the dashboard send action).
+export const sendInfo = internalQuery({
+  args: { groupChatId: v.id("groupChats") },
+  handler: async (ctx, { groupChatId }) => {
+    const group = await ctx.db.get(groupChatId);
+    if (!group) return null;
+    return buildChannelSendInfo(ctx, group);
+  },
+});
+
+// Send a message from the dashboard to a connected group (LINE or WhatsApp).
 export const sendMessage = action({
   args: {
     organizationId: v.id("organizations"),
@@ -176,53 +199,66 @@ export const sendMessage = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const group: { lineGroupId: string; organizationId: string } | null =
-      await ctx.runQuery(api.groupChats.getForServer, { groupChatId, organizationId });
+    const group = await ctx.runQuery(api.groupChats.getForServer, { groupChatId, organizationId });
     if (!group) throw new Error("Group not found");
 
-    const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
-    if (!accessToken) throw new Error("LINE_CHANNEL_ACCESS_TOKEN not configured");
+    const trimmed = text?.trim();
+    const imageUrl: string | null = storageId ? await ctx.storage.getUrl(storageId) : null;
+    if (!trimmed && !imageUrl) throw new Error("text or storageId is required");
 
-    const messages: Array<{ type: string; text?: string; originalContentUrl?: string; previewImageUrl?: string }> = [];
-
-    // Resolve Convex storage file → CDN URL for image messages
-    if (storageId) {
-      const imageUrl: string | null = await ctx.storage.getUrl(storageId);
-      if (imageUrl) {
-        messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
-      }
+    // Resolve channel + send credentials (handles LINE, WhatsApp BYO, and managed).
+    const info = await ctx.runQuery(internal.groupChats.sendInfo, { groupChatId });
+    if (!info) throw new Error("Group not found");
+    const creds = await resolveSendCreds(info);
+    if (!creds) {
+      throw new Error(
+        (group.channel ?? "line") === "whatsapp"
+          ? "WhatsApp isn't connected for this organization"
+          : "Messaging channel is not configured"
+      );
     }
+    const channel = creds.channel;
 
-    if (text?.trim()) {
-      messages.push({ type: "text", text: text.trim() });
+    // WhatsApp sends image + caption together; LINE sends them as separate messages.
+    if (imageUrl) {
+      const ok = await sendGroupMessage(creds, group.lineGroupId, {
+        text: channel === "whatsapp" ? (trimmed ?? "") : "",
+        imageUrl,
+      });
+      if (!ok) throw new Error("Failed to send image");
     }
-
-    if (messages.length === 0) throw new Error("text or storageId is required");
-
-    const res = await fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ to: group.lineGroupId, messages }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`LINE push failed: ${res.status} ${body}`);
+    if (trimmed && (channel === "line" || !imageUrl)) {
+      const ok = await sendGroupMessage(creds, group.lineGroupId, { text: trimmed });
+      if (!ok) throw new Error("Failed to send message");
     }
 
     // Store the bot message in Convex for chat history
-    if (text?.trim()) {
+    if (trimmed) {
       await ctx.runMutation(api.messages.storeBotPush, {
         organizationId,
         groupChatId,
-        text: text.trim(),
+        text: trimmed,
         timestamp: Date.now(),
         sentByName,
       });
     }
+  },
+});
+
+// Update group metadata from a WhatsApp groups.upsert event.
+export const updateMetaInternal = internalMutation({
+  args: {
+    groupChatId: v.id("groupChats"),
+    displayName: v.optional(v.string()),
+    memberCount: v.optional(v.number()),
+  },
+  handler: async (ctx, { groupChatId, displayName, memberCount }) => {
+    const group = await ctx.db.get(groupChatId);
+    if (!group) return;
+    const patch: Record<string, unknown> = {};
+    if (displayName && displayName !== group.displayName) patch.displayName = displayName;
+    if (memberCount != null) patch.memberCount = memberCount;
+    if (Object.keys(patch).length > 0) await ctx.db.patch(groupChatId, patch);
   },
 });
 
@@ -255,10 +291,13 @@ export const leaveGroup = action({
     const group = await ctx.runQuery(api.groupChats.getForServer, { groupChatId, organizationId });
     if (!group) throw new Error("Group not found");
 
-    // Tell LINE to remove the bot from the group (best-effort)
-    const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
-    if (accessToken) {
-      await callLineLeaveGroup(group.lineGroupId, accessToken);
+    // Best-effort: tell LINE to remove the bot. WhatsApp groups are simply archived
+    // (the user's own number stays in the group; the bot just stops monitoring it).
+    if ((group.channel ?? "line") === "line") {
+      const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+      if (accessToken) {
+        await callLineLeaveGroup(group.lineGroupId, accessToken);
+      }
     }
 
     await ctx.runMutation(internal.groupChats.archiveInternal, { groupChatId, organizationId });

@@ -8,11 +8,12 @@ import { getAllGroupMemberIds, getGroupMemberProfile } from "./lib/lineApi";
 export const upsertFromWebhook = mutation({
   args: {
     organizationId: v.id("organizations"),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))),
     lineUserId: v.string(),
     displayName: v.string(),
     pictureUrl: v.optional(v.string()),
   },
-  handler: async (ctx, { organizationId, lineUserId, displayName, pictureUrl }) => {
+  handler: async (ctx, { organizationId, channel, lineUserId, displayName, pictureUrl }) => {
     const existing = await ctx.db
       .query("userLineProfiles")
       .withIndex("byOrganizationAndLineUserId", (q) =>
@@ -21,10 +22,16 @@ export const upsertFromWebhook = mutation({
       .unique();
 
     if (existing) {
-      await ctx.db.patch(existing._id, { displayName, pictureUrl, lastSeenAt: Date.now() });
+      // Don't overwrite a real name with a phone-number fallback.
+      const patch: Record<string, unknown> = { lastSeenAt: Date.now() };
+      if (displayName && displayName !== lineUserId) patch.displayName = displayName;
+      else if (!existing.displayName) patch.displayName = displayName;
+      if (pictureUrl) patch.pictureUrl = pictureUrl;
+      await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("userLineProfiles", {
         organizationId,
+        ...(channel ? { channel } : {}),
         lineUserId,
         displayName,
         pictureUrl,

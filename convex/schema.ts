@@ -24,15 +24,26 @@ export default defineSchema({
     ownerId: v.id("users"),
     clerkOrgId: v.optional(v.string()), // Clerk organization ID (org_xxx) — set when created via Clerk
     profileImageStorageId: v.optional(v.id("_storage")),
-    lineChannelAccessToken: v.optional(v.string()), // encrypted
-    lineChannelSecret: v.optional(v.string()), // encrypted
+    lineChannelAccessToken: v.optional(v.string()), // legacy plaintext — unused
+    lineChannelSecret: v.optional(v.string()), // legacy plaintext — unused
+    // LINE delivery mode: "managed" = shared LeadMighty LINE bot (env creds),
+    // "byok" = the org's own LINE channel (encrypted creds below). Absent ⇒ managed.
+    lineMode: v.optional(v.union(v.literal("managed"), v.literal("byok"))),
+    lineByokAccessToken: v.optional(v.string()),  // encrypted
+    lineByokChannelSecret: v.optional(v.string()), // encrypted
+    lineByokBotName: v.optional(v.string()),       // bot display name (validated via LINE API)
+    lineRouteToken: v.optional(v.string()),        // unguessable token in the BYOK webhook URL
+    // WhatsApp delivery mode: "managed" = shared LeadMighty bot number,
+    // "byo" = the org scanned their own number (whatsappSessions). Absent = not set.
+    whatsappMode: v.optional(v.union(v.literal("managed"), v.literal("byo"))),
     planId: v.string(), // Clerk billing plan slug
     isActive: v.boolean(),
     createdAt: v.number(),
   })
     .index("bySlug", ["slug"])
     .index("byOwnerId", ["ownerId"])
-    .index("byClerkOrgId", ["clerkOrgId"]),
+    .index("byClerkOrgId", ["clerkOrgId"])
+    .index("byLineRouteToken", ["lineRouteToken"]),
 
   // ─── Memberships (dashboard access — Clerk users who can use the CRM) ────────
   memberships: defineTable({
@@ -97,10 +108,49 @@ export default defineSchema({
     .index("byToken", ["token"])
     .index("byOrganizationId", ["organizationId"]),
 
-  // ─── Group Chats (connected LINE groups) ────────────────────────────────────
+  // ─── WhatsApp Sessions (one per org — platform-provisioned Wasender session) ──
+  // Each org "brings their own number" by scanning a QR; that becomes their bot.
+  whatsappSessions: defineTable({
+    organizationId: v.id("organizations"),
+    wasenderSessionId: v.string(), // Wasender session id (stored as string)
+    apiKey: v.string(),            // encrypted — per-session key used to send messages
+    webhookSecret: v.string(),     // encrypted — verifies inbound X-Webhook-Signature
+    routeToken: v.string(),        // unguessable token embedded in the webhook URL
+    phoneNumber: v.optional(v.string()),
+    status: v.union(
+      v.literal("initializing"),
+      v.literal("need_scan"),
+      v.literal("connected"),
+      v.literal("disconnected"),
+    ),
+    lastQrAt: v.optional(v.number()),
+    connectedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    userDisconnected: v.optional(v.boolean()), // true ⇒ disconnect was user-initiated (don't auto-reconnect)
+    reconnectAttempts: v.optional(v.number()),  // backoff counter for unintentional drops
+  })
+    .index("byOrganizationId", ["organizationId"])
+    .index("byRouteToken", ["routeToken"])
+    .index("byWasenderSessionId", ["wasenderSessionId"]),
+
+  // ─── WhatsApp welcomed groups (dedup so the join welcome fires once per group) ──
+  whatsappWelcomedGroups: defineTable({
+    providerGroupId: v.string(), // WhatsApp group JID
+    welcomedAt: v.number(),
+  }).index("byProviderGroupId", ["providerGroupId"]),
+
+  // ─── Group Chats (connected LINE / WhatsApp groups) ──────────────────────────
   groupChats: defineTable({
     organizationId: v.id("organizations"),
-    lineGroupId: v.string(), // LINE group/room ID
+    // Provider group id. For LINE this is the LINE group/room ID; for WhatsApp
+    // it's the group JID (`...@g.us`). Globally unique either way → webhook routing.
+    lineGroupId: v.string(),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))), // absent ⇒ "line"
+    // Which bot connected this group. Both modes can coexist per org; only the org's
+    // selected mode (lineMode / whatsappMode) is processed by the AI/sending backend.
+    lineAgent: v.optional(v.union(v.literal("managed"), v.literal("byok"))),
+    whatsappAgent: v.optional(v.union(v.literal("managed"), v.literal("byo"))),
+    whatsappSessionId: v.optional(v.id("whatsappSessions")), // set for WhatsApp BYO groups
     displayName: v.string(),
     pictureUrl: v.optional(v.string()),
     memberCount: v.optional(v.number()),
@@ -237,9 +287,10 @@ export default defineSchema({
   messages: defineTable({
     organizationId: v.id("organizations"),
     groupChatId: v.id("groupChats"),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))), // absent ⇒ "line"
     projectId: v.optional(v.id("projects")), // null until routed
-    lineMessageId: v.string(), // LINE's message ID (dedup key)
-    lineUserId: v.string(), // LINE sender ID
+    lineMessageId: v.string(), // provider message ID (dedup key) — LINE id or WhatsApp message id
+    lineUserId: v.string(), // provider sender ID — LINE userId or WhatsApp phone number
     memberUserId: v.optional(v.id("users")), // mapped if sender is org member
     sentByName: v.optional(v.string()), // dashboard user who sent this bot message
     text: v.string(),
@@ -494,10 +545,11 @@ export default defineSchema({
     .index("byMessageId", ["messageId"])
     .index("byOrganizationId", ["organizationId"]),
 
-  // ─── User LINE Profiles (LINE user → org member mapping) ────────────────────
+  // ─── User Profiles (provider user → org member mapping; LINE or WhatsApp) ────
   userLineProfiles: defineTable({
     organizationId: v.id("organizations"),
-    lineUserId: v.string(),
+    channel: v.optional(v.union(v.literal("line"), v.literal("whatsapp"))), // absent ⇒ "line"
+    lineUserId: v.string(), // provider user id — LINE userId or WhatsApp phone number
     userId: v.optional(v.id("users")), // mapped org member, if known
     displayName: v.string(),
     pictureUrl: v.optional(v.string()),

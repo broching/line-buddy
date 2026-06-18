@@ -2,6 +2,9 @@ import { internalAction, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { sendGroupMessage } from "./lib/messaging";
+import { buildChannelSendInfo, resolveSendCreds } from "./lib/channelContext";
+import { phoneToJid } from "./lib/wasenderApi";
 
 export const getFireContext = internalQuery({
   args: {
@@ -14,12 +17,12 @@ export const getFireContext = internalQuery({
     const stageTemplate = await ctx.db.get(stageTemplateId);
     if (!stageTemplate || !stageTemplate.stageActions?.length) return null;
 
-    const [group, org, project] = await Promise.all([
+    const [group, project] = await Promise.all([
       ctx.db.get(groupChatId),
-      ctx.db.get(organizationId),
       ctx.db.get(projectId),
     ]);
-    if (!group || !org || !project) return null;
+    if (!group || !project) return null;
+    const channelInfo = await buildChannelSendInfo(ctx, group);
 
     const allRoleIds = new Set(
       stageTemplate.stageActions.flatMap((a) => a.roleIds as string[])
@@ -72,8 +75,7 @@ export const getFireContext = internalQuery({
         message: string;
         roleIds: Id<"roles">[];
       }>,
-      lineGroupId: group.lineGroupId,
-      lineAccessToken: org.lineChannelAccessToken ?? null,
+      channelInfo,
       lineUserIdByRole,
       displayNameByUserId,
       collectedFields,
@@ -102,7 +104,9 @@ export const fire = internalAction({
   },
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.stageActions.getFireContext, args);
-    if (!context || !context.lineAccessToken) return;
+    if (!context) return;
+    const creds = context.channelInfo ? await resolveSendCreds(context.channelInfo) : null;
+    if (!creds) return;
 
     for (const action of context.stageActions) {
       const resolvedMessage = substituteVars(action.message, context.collectedFields);
@@ -111,49 +115,19 @@ export const fire = internalAction({
         .filter(Boolean);
 
       if (action.type === "group_message") {
-        let messageObj: object;
-        if (lineUserIds.length > 0) {
-          const substitution: Record<string, object> = {};
-          const mentionParts: string[] = [];
-          lineUserIds.forEach((uid, i) => {
-            const key = `mention${i}`;
-            substitution[key] = { type: "mention", mentionee: { type: "user", userId: uid } };
-            mentionParts.push(`{${key}}`);
-          });
-          messageObj = {
-            type: "textV2",
-            text: `${mentionParts.join(" ")}\n${resolvedMessage}`,
-            substitution,
-          };
-        } else {
-          messageObj = { type: "text", text: resolvedMessage };
-        }
-
-        const res = await fetch("https://api.line.me/v2/bot/message/push", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${context.lineAccessToken}`,
-          },
-          body: JSON.stringify({ to: context.lineGroupId, messages: [messageObj] }),
+        const mentions = lineUserIds.map((uid) => ({
+          userId: uid,
+          displayName: context.displayNameByUserId[uid] ?? uid,
+        }));
+        await sendGroupMessage(creds, context.channelInfo!.providerGroupId, {
+          text: resolvedMessage,
+          mentions: mentions.length > 0 ? mentions : undefined,
         });
-        if (!res.ok) {
-          console.error("[stageActions] group push failed:", res.status, await res.text());
-        }
       } else {
         // pm_message — send individual DMs to each bound user
         for (const uid of lineUserIds) {
-          const res = await fetch("https://api.line.me/v2/bot/message/push", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${context.lineAccessToken}`,
-            },
-            body: JSON.stringify({ to: uid, messages: [{ type: "text", text: resolvedMessage }] }),
-          });
-          if (!res.ok) {
-            console.error("[stageActions] PM push failed:", res.status, await res.text());
-          }
+          const to = creds.channel === "whatsapp" ? phoneToJid(uid) : uid;
+          await sendGroupMessage(creds, to, { text: resolvedMessage });
         }
       }
     }

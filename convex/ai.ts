@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { cancelFieldReminderByKey } from "./reminders";
+import { buildChannelSendInfo } from "./lib/channelContext";
 
 // ─── Internal queries ─────────────────────────────────────────────────────────
 
@@ -61,16 +62,9 @@ export const getContextForProcessing = internalQuery({
       })
     );
 
-    // LINE credentials for sending replies
+    // Channel send info for replies (LINE token or encrypted WhatsApp key)
     const group = await ctx.db.get(message.groupChatId);
-    const org = group ? await ctx.db.get(group.organizationId) : null;
-    const lineContext =
-      group && org
-        ? {
-            lineGroupId: group.lineGroupId,
-            lineAccessToken: org.lineChannelAccessToken ?? null,
-          }
-        : null;
+    const channelContext = group ? await buildChannelSendInfo(ctx, group) : null;
 
     // Recent messages (last 30, oldest→newest) with project + role tags
     const raw = await ctx.db
@@ -129,7 +123,7 @@ export const getContextForProcessing = internalQuery({
       organizationId: message.organizationId,
       activeProjects: projectsWithStages,
       recentMessages,
-      lineContext,
+      channelContext,
     };
   },
 });

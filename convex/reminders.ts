@@ -4,6 +4,8 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx } from "./_generated/server";
 import { requireMembership } from "./lib/auth";
+import { sendGroupMessage } from "./lib/messaging";
+import { buildChannelSendInfo, resolveSendCreds, type ChannelSendInfo } from "./lib/channelContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,8 +21,7 @@ type FieldReminderContext = {
   reminderMessage: string | undefined;
   fieldLabel: string;
   reminderId: Id<"reminders"> | undefined;
-  lineGroupId: string;
-  lineAccessToken: string;
+  channelInfo: ChannelSendInfo | null;
   projectName: string;
   stageName: string;
   mentions: Array<{ lineUserId: string; displayName: string }>;
@@ -29,8 +30,7 @@ type FieldReminderContext = {
 type SendContext = {
   pendingReminderId: Id<"reminders"> | null;
   stageStatus: string;
-  lineGroupId: string | null;
-  lineAccessToken: string | null;
+  channelInfo: ChannelSendInfo | null;
   projectName: string;
   stageName: string;
   stageOrder: number;
@@ -155,35 +155,16 @@ export const sendFieldReminder = internalAction({
     if (!data || data.stageStatus !== "active" || !data.isFieldMissing) return;
     if (data.sentCount >= data.maxReminderCount) return;
 
-    // Build LINE textV2 message with @mentions
     const body = data.reminderMessage?.trim() || `Please provide "${data.fieldLabel}" to continue.`;
-    let messageObj: object;
-
-    if (data.mentions.length > 0) {
-      const substitution: Record<string, object> = {};
-      const mentionParts: string[] = [];
-      data.mentions.forEach((m, i) => {
-        const key = `mention${i}`;
-        substitution[key] = { type: "mention", mentionee: { type: "user", userId: m.lineUserId } };
-        mentionParts.push(`{${key}}`);
-      });
-      messageObj = { type: "textV2", text: `${mentionParts.join(" ")}\n${body}`, substitution };
-    } else {
-      messageObj = { type: "text", text: `⏰ ${body}` };
-    }
+    const mentions = data.mentions.map((m) => ({ userId: m.lineUserId, displayName: m.displayName }));
 
     let sendOk = false;
-    if (data.lineGroupId && data.lineAccessToken) {
-      const res = await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${data.lineAccessToken}`,
-        },
-        body: JSON.stringify({ to: data.lineGroupId, messages: [messageObj] }),
+    const creds = data.channelInfo ? await resolveSendCreds(data.channelInfo) : null;
+    if (creds) {
+      sendOk = await sendGroupMessage(creds, data.channelInfo!.providerGroupId, {
+        text: mentions.length > 0 ? body : `⏰ ${body}`,
+        mentions,
       });
-      sendOk = res.ok;
-      if (!res.ok) console.error("[reminders] field push failed:", res.status, await res.text());
     }
 
     const newCount = data.sentCount + 1;
@@ -250,7 +231,7 @@ export const loadFieldReminderContext = internalQuery({
     if (!project || project.organizationId !== organizationId) return null;
 
     const group = await ctx.db.get(groupChatId);
-    const org = await ctx.db.get(organizationId);
+    const channelInfo = group ? await buildChannelSendInfo(ctx, group) : null;
 
     const fieldConfig = stageTemplate.requiredFields.find((f) => f.key === fieldKey);
     if (!fieldConfig) return null;
@@ -299,8 +280,7 @@ export const loadFieldReminderContext = internalQuery({
       reminderMessage: fieldConfig.reminderMessage,
       fieldLabel: fieldConfig.label,
       reminderId: jobs[fieldKey]?.reminderId,
-      lineGroupId: group?.lineGroupId ?? "",
-      lineAccessToken: org?.lineChannelAccessToken ?? "",
+      channelInfo,
       projectName: project.name,
       stageName: stageTemplate.name,
       mentions,
@@ -439,21 +419,11 @@ export const send = internalAction({
 
     if (!data || data.stageStatus !== "active" || !data.pendingReminderId) return;
 
-    if (data.lineAccessToken && data.lineGroupId) {
+    const creds = data.channelInfo ? await resolveSendCreds(data.channelInfo) : null;
+    if (creds) {
       const text = buildReminderText(data);
-      const res = await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${data.lineAccessToken}`,
-        },
-        body: JSON.stringify({
-          to: data.lineGroupId,
-          messages: [{ type: "text", text }],
-        }),
-      });
-
-      if (!res.ok) {
+      const ok = await sendGroupMessage(creds, data.channelInfo!.providerGroupId, { text });
+      if (!ok) {
         await ctx.runMutation(internal.reminders.markFailed, { reminderId: data.pendingReminderId, stageStateId });
         return;
       }
@@ -490,7 +460,7 @@ export const loadSendContext = internalQuery({
     if (!project || project.organizationId !== organizationId) return null;
 
     const group = await ctx.db.get(project.groupChatId);
-    const org = await ctx.db.get(organizationId);
+    const channelInfo = group ? await buildChannelSendInfo(ctx, group) : null;
 
     const pending = await ctx.db
       .query("reminders")
@@ -506,8 +476,7 @@ export const loadSendContext = internalQuery({
     return {
       pendingReminderId: pending?._id ?? null,
       stageStatus: stageState.status as string,
-      lineGroupId: group?.lineGroupId ?? null,
-      lineAccessToken: org?.lineChannelAccessToken ?? null,
+      channelInfo,
       projectName: project.name,
       stageName: stageTemplate.name,
       stageOrder: stageState.stageOrder,
@@ -604,34 +573,19 @@ export const sendManualReminder = internalAction({
     message: v.string(),
   },
   handler: async (ctx, { reminderId, projectId, organizationId, groupChatId, roleIds, message }) => {
-    const context: { lineGroupId: string; lineAccessToken: string; mentions: Array<{ lineUserId: string; displayName: string }> } | null =
+    const context: { channelInfo: ChannelSendInfo | null; mentions: Array<{ lineUserId: string; displayName: string }> } | null =
       await ctx.runQuery(internal.reminders.loadManualReminderContext, { organizationId, groupChatId, roleIds });
     if (!context) return;
 
-    // Build LINE message with @mentions
-    let messageObj: object;
-    if (context.mentions.length > 0) {
-      const substitution: Record<string, object> = {};
-      const mentionParts: string[] = [];
-      context.mentions.forEach((m, i) => {
-        const key = `mention${i}`;
-        substitution[key] = { type: "mention", mentionee: { type: "user", userId: m.lineUserId } };
-        mentionParts.push(`{${key}}`);
-      });
-      messageObj = { type: "textV2", text: `${mentionParts.join(" ")}\n${message}`, substitution };
-    } else {
-      messageObj = { type: "text", text: `⏰ ${message}` };
-    }
+    const mentions = context.mentions.map((m) => ({ userId: m.lineUserId, displayName: m.displayName }));
 
     let sendOk = false;
-    if (context.lineGroupId && context.lineAccessToken) {
-      const res = await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${context.lineAccessToken}` },
-        body: JSON.stringify({ to: context.lineGroupId, messages: [messageObj] }),
+    const creds = context.channelInfo ? await resolveSendCreds(context.channelInfo) : null;
+    if (creds) {
+      sendOk = await sendGroupMessage(creds, context.channelInfo!.providerGroupId, {
+        text: mentions.length > 0 ? message : `⏰ ${message}`,
+        mentions,
       });
-      sendOk = res.ok;
-      if (!res.ok) console.error("[reminders] manual push failed:", res.status, await res.text());
     }
 
     const now = Date.now();
@@ -658,8 +612,8 @@ export const loadManualReminderContext = internalQuery({
   },
   handler: async (ctx, { organizationId, groupChatId, roleIds }) => {
     const group = await ctx.db.get(groupChatId);
-    const org = await ctx.db.get(organizationId);
-    if (!group || !org) return null;
+    if (!group) return null;
+    const channelInfo = await buildChannelSendInfo(ctx, group);
 
     const mappings = await ctx.db
       .query("groupChatRoleMappings")
@@ -684,8 +638,7 @@ export const loadManualReminderContext = internalQuery({
     );
 
     return {
-      lineGroupId: group.lineGroupId ?? "",
-      lineAccessToken: org.lineChannelAccessToken ?? "",
+      channelInfo,
       mentions,
     };
   },

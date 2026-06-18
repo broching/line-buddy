@@ -357,3 +357,25 @@ html {
 .lm-muted { @apply text-slate-400 dark:text-slate-600; }
 .lm-label { @apply text-indigo-600 dark:text-indigo-400; }
 .lm-nav { @apply bg-white/80 dark:bg-[#080b1a]/80 border-slate-200/60 dark:border-[#1e2448]/60; }
+/* react-phone-number-input — align with shadcn theme */
+.lb-phone-input {
+  --PhoneInputCountryFlag-height: 1.1em;
+  --PhoneInputCountrySelectArrow-color: var(--muted-foreground);
+  --PhoneInputCountrySelectArrow-opacity: 1;
+}
+.lb-phone-input .PhoneInputCountry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md, 0.5rem);
+  background: transparent;
+}
+.lb-phone-input .PhoneInputCountrySelectArrow {
+  color: var(--muted-foreground);
+}
+.lb-phone-input .PhoneInputInput {
+  min-width: 0;
+}
