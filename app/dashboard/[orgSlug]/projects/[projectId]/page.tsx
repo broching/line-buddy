@@ -54,6 +54,7 @@ import {
   IconBellOff,
   IconCalendar,
   IconTemplate,
+  IconCornerDownRight,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -61,11 +62,19 @@ import { PaywallGate } from "@/components/billing/paywall-gate";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+type SubFieldEntry = {
+  label: string;
+  value: string;
+  confidence: number;
+  extractedAt: number;
+};
+
 type CollectedField = {
   value: string | number;
   extractedAt: number;
   confidence: number;
   sourceMessageId?: string;
+  subFields?: Record<string, SubFieldEntry>;
 };
 
 type ExtractedField = { fieldKey: string; value: string; confidence: number };
@@ -729,7 +738,7 @@ function ProjectChatBubble({
 }) {
   const isSystemEdit = message.lineUserId === "system:dashboard";
   const isBot = message.lineUserId === "system:bot";
-  const relevantFields = message.extraction?.extractedFields.filter((f) => f.confidence >= 0.7) ?? [];
+  const relevantFields = message.extraction?.extractedFields.filter((f) => f.confidence >= 0.9 ) ?? [];
   const time = new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const profile = profileById[message.lineUserId];
   const displayName = profile?.displayName ?? (isSystemEdit || isBot ? null : `…${message.lineUserId.slice(-8)}`);
@@ -1072,6 +1081,8 @@ function FieldRow({
 
   const isFilled = !!collected;
   const isAiExtracted = isFilled && collected.confidence < 1.0;
+  const subFieldEntries = collected?.subFields ? Object.entries(collected.subFields) : [];
+  const isComposite = subFieldEntries.length > 1 || (subFieldEntries.length === 1 && subFieldEntries[0][0] !== "value");
 
   return (
     <div className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${isFilled ? "bg-background border" : "border border-dashed border-muted-foreground/25 bg-muted/20"}`}>
@@ -1086,15 +1097,36 @@ function FieldRow({
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">{field.label}</span>
           {field.isRequired && <span className="text-destructive text-xs">*</span>}
-          {isAiExtracted && !editing && (
+          {isAiExtracted && !editing && !isComposite && (
             <Badge variant="outline" className="text-[10px] py-0 h-4 shrink-0 text-blue-600 border-blue-300 ml-1">
               <IconBrain className="size-2.5 mr-0.5" />
               AI {Math.round(collected.confidence * 100)}%
             </Badge>
           )}
+          {isComposite && !editing && (
+            <Badge variant="outline" className="text-[10px] py-0 h-4 shrink-0 text-muted-foreground ml-1">
+              {subFieldEntries.length} parts
+            </Badge>
+          )}
         </div>
-        {isFilled && !editing && (
+        {isFilled && !editing && !isComposite && (
           <p className="font-medium truncate">{String(collected.value)}</p>
+        )}
+        {isComposite && !editing && (
+          <div className="flex flex-col gap-1 mt-1.5">
+            {subFieldEntries.map(([subKey, sf]) => (
+              <SubFieldRow
+                key={subKey}
+                fieldKey={field.key}
+                fieldLabel={field.label}
+                subKey={subKey}
+                subField={sf}
+                stageStateId={stageStateId}
+                orgId={orgId}
+                editable={editable}
+              />
+            ))}
+          </div>
         )}
         {editing && (
           <Input
@@ -1128,6 +1160,101 @@ function FieldRow({
                   <IconX className="size-3" />
                 </Button>
               )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sub-field row (one attribute of a composite field, e.g. "Material" under "Roof description") ────
+
+function SubFieldRow({
+  fieldKey,
+  fieldLabel,
+  subKey,
+  subField,
+  stageStateId,
+  orgId,
+  editable,
+}: {
+  fieldKey: string;
+  fieldLabel: string;
+  subKey: string;
+  subField: SubFieldEntry;
+  stageStateId: Id<"projectStageStates">;
+  orgId: Id<"organizations">;
+  editable: boolean;
+}) {
+  const updateField = useMutation(api.projectStageStates.updateField);
+  const clearField = useMutation(api.projectStageStates.clearField);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  async function handleSave() {
+    if (!draft.trim()) return;
+    try {
+      await updateField({
+        organizationId: orgId,
+        stageStateId,
+        fieldKey,
+        value: draft.trim(),
+        fieldLabel,
+        subKey,
+        subLabel: subField.label,
+      });
+      setEditing(false);
+      toast.success("Field saved");
+    } catch { toast.error("Failed to save field"); }
+  }
+
+  async function handleClear() {
+    try {
+      await clearField({ organizationId: orgId, stageStateId, fieldKey, fieldLabel, subKey });
+    } catch { toast.error("Failed to clear field"); }
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-xs min-w-0">
+      <IconCornerDownRight className="size-3 text-muted-foreground/40 shrink-0" />
+      <span className="text-muted-foreground shrink-0 min-w-[72px] truncate">{subField.label}</span>
+      {editing ? (
+        <Input
+          className="h-6 text-xs flex-1 min-w-0"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
+          autoFocus
+        />
+      ) : (
+        <span className="font-medium truncate flex-1">{subField.value}</span>
+      )}
+      {subField.confidence < 1.0 && !editing && (
+        <Badge variant="outline" className="text-[10px] py-0 h-4 shrink-0 text-blue-600 border-blue-300">
+          <IconBrain className="size-2.5 mr-0.5" />
+          {Math.round(subField.confidence * 100)}%
+        </Badge>
+      )}
+      {editable && (
+        <div className="flex gap-0.5 shrink-0">
+          {editing ? (
+            <>
+              <Button size="icon" variant="ghost" className="size-5" onClick={handleSave}>
+                <IconCheck className="size-3 text-green-500" />
+              </Button>
+              <Button size="icon" variant="ghost" className="size-5" onClick={() => setEditing(false)}>
+                <IconX className="size-3" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button size="icon" variant="ghost" className="size-5" onClick={() => { setDraft(subField.value); setEditing(true); }}>
+                <IconPencil className="size-3" />
+              </Button>
+              <Button size="icon" variant="ghost" className="size-5 text-destructive/60 hover:text-destructive" onClick={handleClear}>
+                <IconX className="size-3" />
+              </Button>
             </>
           )}
         </div>

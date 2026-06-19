@@ -678,6 +678,7 @@ function CreateProjectModal({
                   role={role}
                   lineUserId={roleMappings[i]?.lineUserId ?? ""}
                   knownUsers={context.knownUsers}
+                  channel={selectedGroup?.channel ?? "line"}
                   onChange={(v) => setRoleMappings((prev) => { const next = [...prev]; next[i] = { roleId: role.roleId, lineUserId: v }; return next; })}
                 />
               ))}
@@ -702,11 +703,13 @@ function RoleAssignmentRow({
   role,
   lineUserId,
   knownUsers,
+  channel = "line",
   onChange,
 }: {
   role: { roleId: string; roleName: string; teamName: string | null; stageCount: number };
   lineUserId: string;
   knownUsers: Array<{ lineUserId: string; displayName: string; pictureUrl: string | null }>;
+  channel?: "line" | "whatsapp";
   onChange: (v: string) => void;
 }) {
   const [showManual, setShowManual] = useState(!!lineUserId && !knownUsers.some((u) => u.lineUserId === lineUserId));
@@ -722,7 +725,7 @@ function RoleAssignmentRow({
       </div>
       {showManual ? (
         <div className="flex gap-2">
-          <Input className="font-mono text-xs h-8" placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={lineUserId} onChange={(e) => onChange(e.target.value)} autoFocus />
+          <Input className="font-mono text-xs h-8" placeholder={channel === "whatsapp" ? "Phone number e.g. 6591234567" : "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"} value={lineUserId} onChange={(e) => onChange(e.target.value)} autoFocus />
           <Button type="button" variant="ghost" size="sm" className="shrink-0 h-8 text-xs px-2" onClick={() => { setShowManual(false); onChange(""); }}>← Pick</Button>
         </div>
       ) : knownUsers.length === 0 ? (

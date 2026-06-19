@@ -47,6 +47,8 @@ import {
   IconClock,
   IconTrash,
   IconDoorExit,
+  IconAlertTriangle,
+  IconCornerDownRight,
 } from "@tabler/icons-react";
 import {
   Select,
@@ -73,11 +75,19 @@ import { PaywallGate } from "@/components/billing/paywall-gate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type SubFieldEntry = {
+  label: string;
+  value: string;
+  confidence: number;
+  extractedAt: number;
+};
+
 type CollectedField = {
   value: string | number;
   extractedAt: number;
   confidence: number;
   sourceMessageId?: string;
+  subFields?: Record<string, SubFieldEntry>;
 };
 
 type ExtractedField = { fieldKey: string; value: string; confidence: number };
@@ -295,6 +305,11 @@ export default function GroupDetailPage({
             >
               {group.isActive ? "Active" : "Archived"}
             </Badge>
+            {group.isActive && group.channelActive === false && (
+              <Badge variant="outline" className="text-xs shrink-0 border-amber-500/50 text-amber-600">
+                Paused — bot not selected
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground font-mono">{group.lineGroupId}</p>
         </div>
@@ -372,6 +387,8 @@ export default function GroupDetailPage({
             organizationId={org._id}
             orgSlug={orgSlug}
             isActive={group.isActive}
+            channelActive={group.channelActive !== false}
+            channel={group.channel ?? "line"}
           />
         </div>
 
@@ -556,7 +573,7 @@ function ChatBubble({
   const isBot = message.lineUserId === "system:bot";
 
   const relevantFields = message.extraction?.extractedFields.filter(
-    (f) => f.confidence >= 0.7
+    (f) => f.confidence >= 0.9
   ) ?? [];
 
   const time = new Date(message.timestamp).toLocaleTimeString([], {
@@ -951,7 +968,9 @@ function AITraceModal({
               </div>
               <div className="rounded-lg border bg-amber-500/10 border-amber-500/20 p-3 text-center">
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-1">Credits used</p>
-                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">1</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
+                  {Math.ceil((trace.totalInputTokens + trace.totalOutputTokens) / 1000) || 0}
+                </p>
               </div>
             </div>
 
@@ -1862,6 +1881,9 @@ function FieldRow({
   const isFilled = !!fieldData;
   const isAi = isFilled && fieldData.confidence < 1.0;
 
+  const subFieldEntries = fieldData?.subFields ? Object.entries(fieldData.subFields) : [];
+  const isComposite = subFieldEntries.length > 1 || (subFieldEntries.length === 1 && subFieldEntries[0][0] !== "value");
+
   async function handleSave() {
     if (!draft.trim()) { setEditing(false); return; }
     setSaving(true);
@@ -1911,35 +1933,144 @@ function FieldRow({
   }
 
   return (
-    <div className="flex items-baseline gap-1.5 text-xs min-w-0 group/field">
-      {isFilled ? (
-        <IconCheck className="size-3 text-green-500 shrink-0 mt-px" />
-      ) : (
-        <IconCircle className="size-3 text-muted-foreground/30 shrink-0 mt-px" />
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex items-baseline gap-1.5 text-xs min-w-0 group/field">
+        {isFilled ? (
+          <IconCheck className="size-3 text-green-500 shrink-0 mt-px" />
+        ) : (
+          <IconCircle className="size-3 text-muted-foreground/30 shrink-0 mt-px" />
+        )}
+        <span className="text-muted-foreground shrink-0 min-w-[64px] truncate">
+          {field.label}
+        </span>
+        {isComposite ? (
+          <span className="text-muted-foreground/50 italic flex-1 truncate">{subFieldEntries.length} parts</span>
+        ) : isFilled ? (
+          <span className="font-medium truncate flex-1">{String(fieldData.value)}</span>
+        ) : (
+          <span className="text-muted-foreground/40 italic flex-1">—</span>
+        )}
+        {isAi && !isComposite && (
+          <span className="text-blue-500 shrink-0 flex items-center gap-0.5">
+            <IconBrain className="size-2.5" />
+            {Math.round(fieldData.confidence * 100)}%
+          </span>
+        )}
+        {(isFilled || isActive) && (
+          <button
+            className="shrink-0 opacity-0 group-hover/field:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
+            onClick={() => { setDraft(isFilled ? String(fieldData.value) : ""); setEditing(true); }}
+            title={`Edit ${field.label}`}
+          >
+            <IconPencil className="size-3" />
+          </button>
+        )}
+      </div>
+      {isComposite && (
+        <div className="flex flex-col gap-0.5 pl-[18px]">
+          {subFieldEntries.map(([subKey, sf]) => (
+            <SubFieldRow
+              key={subKey}
+              fieldKey={field.key}
+              fieldLabel={field.label}
+              subKey={subKey}
+              subField={sf}
+              stageStateId={stageStateId}
+              orgId={orgId}
+            />
+          ))}
+        </div>
       )}
-      <span className="text-muted-foreground shrink-0 min-w-[64px] truncate">
-        {field.label}
-      </span>
-      {isFilled ? (
-        <span className="font-medium truncate flex-1">{String(fieldData.value)}</span>
-      ) : (
-        <span className="text-muted-foreground/40 italic flex-1">—</span>
-      )}
-      {isAi && (
+    </div>
+  );
+}
+
+// ─── Inline sub-field row (one attribute of a composite field, e.g. "Material" under "Roof description") ──
+
+function SubFieldRow({
+  fieldKey,
+  fieldLabel,
+  subKey,
+  subField,
+  stageStateId,
+  orgId,
+}: {
+  fieldKey: string;
+  fieldLabel: string;
+  subKey: string;
+  subField: SubFieldEntry;
+  stageStateId: Id<"projectStageStates">;
+  orgId: Id<"organizations">;
+}) {
+  const updateField = useMutation(api.projectStageStates.updateField);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!draft.trim()) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      await updateField({
+        organizationId: orgId,
+        stageStateId,
+        fieldKey,
+        value: draft.trim(),
+        fieldLabel,
+        subKey,
+        subLabel: subField.label,
+      });
+      setEditing(false);
+      toast.success(`${subField.label} updated`);
+    } catch {
+      toast.error("Failed to update field");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 text-xs min-w-0">
+        <Input
+          className="h-5 text-xs flex-1 min-w-0"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          autoFocus
+          disabled={saving}
+        />
+        <button onClick={handleSave} disabled={saving} className="text-green-500 hover:text-green-600 shrink-0">
+          {saving ? <IconLoader2 className="size-3 animate-spin" /> : <IconCheck className="size-3" />}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground shrink-0">
+          <IconX className="size-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-baseline gap-1.5 text-xs min-w-0 group/subfield">
+      <IconCornerDownRight className="size-2.5 text-muted-foreground/40 shrink-0" />
+      <span className="text-muted-foreground/70 shrink-0 min-w-[56px] truncate">{subField.label}</span>
+      <span className="font-medium truncate flex-1">{subField.value}</span>
+      {subField.confidence < 1.0 && (
         <span className="text-blue-500 shrink-0 flex items-center gap-0.5">
           <IconBrain className="size-2.5" />
-          {Math.round(fieldData.confidence * 100)}%
+          {Math.round(subField.confidence * 100)}%
         </span>
       )}
-      {(isFilled || isActive) && (
-        <button
-          className="shrink-0 opacity-0 group-hover/field:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
-          onClick={() => { setDraft(isFilled ? String(fieldData.value) : ""); setEditing(true); }}
-          title={`Edit ${field.label}`}
-        >
-          <IconPencil className="size-3" />
-        </button>
-      )}
+      <button
+        className="shrink-0 opacity-0 group-hover/subfield:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-auto"
+        onClick={() => { setDraft(subField.value); setEditing(true); }}
+        title={`Edit ${subField.label}`}
+      >
+        <IconPencil className="size-3" />
+      </button>
     </div>
   );
 }
@@ -1950,11 +2081,15 @@ function ComposeBar({
   groupChatId,
   organizationId,
   isActive = true,
+  channelActive = true,
+  channel = "line",
 }: {
   groupChatId: Id<"groupChats">;
   organizationId: Id<"organizations">;
   orgSlug: string;
   isActive?: boolean;
+  channelActive?: boolean;
+  channel?: "line" | "whatsapp";
 }) {
   const { user } = useUser();
   const generateUploadUrl = useMutation(api.fileStorage.generateUploadUrl);
@@ -2052,6 +2187,24 @@ function ComposeBar({
     );
   }
 
+  if (!channelActive) {
+    const channelLabel = channel === "whatsapp" ? "WhatsApp" : "LINE";
+    return (
+      <div className="shrink-0 border-t bg-amber-500/10 px-4 py-3 flex items-center gap-3 text-sm">
+        <div className="flex items-center justify-center size-8 rounded-full bg-amber-500/20 shrink-0">
+          <IconAlertTriangle className="size-4 text-amber-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-medium text-foreground text-sm">This {channelLabel} bot isn&apos;t active</p>
+          <p className="text-xs text-muted-foreground">
+            You&apos;ve switched delivery method, so this group is paused — messages aren&apos;t sent or
+            processed. Re-select its bot in Settings → Channels to resume.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="shrink-0 border-t bg-background relative">
       {/* Image preview */}
@@ -2095,7 +2248,7 @@ function ComposeBar({
       )}
 
       {/* Input row */}
-      <div className="flex items-end gap-2 px-3 py-3">
+      <div className="flex items-end gap-2 px-3 pt-3 pb-5">
         {/* Emoji toggle */}
         <button
           type="button"

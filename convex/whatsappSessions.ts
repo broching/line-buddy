@@ -14,6 +14,7 @@ import {
   deleteSession,
   getGroupMetadata,
   getAllContacts,
+  updateSessionSettings,
 } from "./lib/wasenderApi";
 import { decryptSecret } from "./lib/crypto";
 
@@ -333,6 +334,10 @@ export const connect = action({
       organizationId,
     });
     if (!session) throw new Error("No WhatsApp session — provision one first");
+
+    // Make sure the session isn't ignoring group events (fixes sessions created
+    // before this default, or with the dashboard toggles enabled).
+    await updateSessionSettings(session.wasenderSessionId);
 
     const { status, qrCode } = await connectSession(session.wasenderSessionId);
 

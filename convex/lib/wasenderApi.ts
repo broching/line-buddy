@@ -69,10 +69,30 @@ export async function createSession(args: {
       webhook_url: args.webhookUrl,
       webhook_enabled: true,
       webhook_events: args.events ?? DEFAULT_WEBHOOK_EVENTS,
+      // We rely on group messages — make sure none of these are filtered out.
+      ignore_groups: false,
+      ignore_channels: false,
+      ignore_broadcasts: false,
     }),
   });
   if (!res.ok) throw new Error(`Wasender createSession failed: ${res.status} ${await res.text()}`);
   return parseSession(await res.json());
+}
+
+// Ensures an existing session isn't filtering out group events (idempotent).
+export async function updateSessionSettings(sessionId: string): Promise<void> {
+  const res = await fetch(`${WASENDER_API}/whatsapp-sessions/${sessionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${pat()}` },
+    body: JSON.stringify({
+      ignore_groups: false,
+      ignore_channels: false,
+      ignore_broadcasts: false,
+      webhook_enabled: true,
+      webhook_events: DEFAULT_WEBHOOK_EVENTS,
+    }),
+  });
+  if (!res.ok) console.error("[Wasender] updateSessionSettings failed:", res.status, await res.text());
 }
 
 // Fetch full session details (used to recover the webhook secret / api key if the
@@ -197,6 +217,15 @@ export async function getGroupPicture(apiKey: string, groupJid: string): Promise
   if (!res.ok) return null;
   const json = await res.json();
   return (json.data?.imgUrl ?? json.imgUrl ?? null) as string | null;
+}
+
+// Bot leaves a group it's a member of.
+export async function leaveGroup(apiKey: string, groupJid: string): Promise<void> {
+  const res = await fetch(`${WASENDER_API}/groups/${encodeURIComponent(groupJid)}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) console.error("[Wasender] leaveGroup failed:", res.status, await res.text());
 }
 
 export async function getAllContacts(

@@ -80,18 +80,24 @@ export const getProjectCreationContext = query({
       assignedLineUserId: assignedByRole[r.roleId] ?? null,
     }));
 
-    // Known LINE users — read directly from profiles table (populated proactively on group join)
+    // Known contacts for binding — scoped to the group's channel so a WhatsApp group
+    // only shows WhatsApp members (and a LINE group only LINE members).
+    const group = await ctx.db.get(groupChatId);
+    const groupChannel = group?.channel ?? "line";
     const profiles = await ctx.db
       .query("userLineProfiles")
       .withIndex("byOrganizationId", (q) => q.eq("organizationId", organizationId))
       .order("desc")
-      .take(100);
+      .take(200);
 
-    const knownUsers = profiles.map((p) => ({
-      lineUserId: p.lineUserId,
-      displayName: p.displayName,
-      pictureUrl: p.pictureUrl ?? null,
-    }));
+    const knownUsers = profiles
+      .filter((p) => (p.channel ?? "line") === groupChannel)
+      .slice(0, 100)
+      .map((p) => ({
+        lineUserId: p.lineUserId,
+        displayName: p.displayName,
+        pictureUrl: p.pictureUrl ?? null,
+      }));
 
     return { roles: rolesWithAssignment, knownUsers };
   },

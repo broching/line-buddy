@@ -151,7 +151,15 @@ type StageState = {
   stageTemplateId: Id<"workflowStageTemplates">;
   stageOrder: number;
   status: string;
-  collectedFields: Record<string, { value: unknown; confidence: number; extractedAt: number }>;
+  collectedFields: Record<
+    string,
+    {
+      value: unknown;
+      confidence: number;
+      extractedAt: number;
+      subFields?: Record<string, { label: string; value: string; confidence: number; extractedAt: number }>;
+    }
+  >;
   template: {
     name: string;
     description?: string;
@@ -187,6 +195,11 @@ type Context = {
 
 const intentSchema = z.object({
   intent: z.enum(["stage_filling", "product_query", "hybrid", "other"]),
+  hasProductQuestion: z
+    .boolean()
+    .describe(
+      "True ONLY if the message contains a genuine, explicit question that requires looking something up in a product/FAQ knowledge base (pricing, availability, specs, policies, hours, etc). Greetings, thanks, acknowledgements, and filler words are NEVER sufficient — those are always false."
+    ),
   confidence: z.number(),
   reasoning: z.string(),
 });
@@ -209,13 +222,15 @@ async function classifyIntent(text: string, context: Context, tracker: TokenTrac
       "system",
       `You classify LINE group chat messages into one of four intents:
 
-1. "stage_filling" — The message provides or updates information for a project order/workflow (e.g., addresses, quantities, names, dates, confirmations). This includes corrections like "change that to 3" or "my address is Oak St 12".
+1. "stage_filling" — The message provides or updates information for a project order/workflow (e.g., addresses, quantities, names, dates, confirmations). This includes corrections like "change that to 3" or "my address is Oak St 12". A greeting, "hello", "thanks", or other filler word ALONGSIDE this data does NOT change the intent — it is still "stage_filling", not "hybrid".
 
-2. "product_query" — The message asks about products, services, pricing, availability, FAQs, or general information that would be found in a product catalog or FAQ document (e.g., "what flavors do you have?", "how much does delivery cost?", "what are your hours?").
+2. "product_query" — The ENTIRE message is a genuine question about products, services, pricing, availability, or FAQs (e.g., "what flavors do you have?", "how much does delivery cost?", "what are your hours?"), with no separate order/workflow data to extract.
 
-3. "hybrid" — The message BOTH provides order/workflow information AND asks a product/service question. Example: "change my order to 3 muffins and what is the price?" — this fills a field AND asks a question. Use this when both elements are clearly present.
+3. "hybrid" — The message contains BOTH (a) a genuine, explicit product/service QUESTION that needs a knowledge-base lookup, AND (b) separate order/workflow data to extract. Both parts must be real and distinguishable — do not use "hybrid" just because a greeting or filler word accompanies order data; that case is "stage_filling".
 
-4. "other" — Greetings, off-topic messages, commands, acknowledgements, or unclear messages.
+4. "other" — Greetings, off-topic messages, commands, acknowledgements, or unclear messages with no order/workflow data and no product question.
+
+CRITICAL: Greetings ("hi", "hello"), acknowledgements ("ok", "thanks", "got it"), and filler words are NEVER a "question" component. Only classify as "hybrid" or "product_query" when there is an actual question requiring a lookup — set hasProductQuestion accordingly.
 
 Active projects: ${projectNames}
 Relevant field types: ${fieldNames}
@@ -368,7 +383,10 @@ type ExtractionResult = {
   stageTemplateId: Id<"workflowStageTemplates">;
   stageName: string;
   stageOrder: number;
-  fields: Array<{ key: string; value: string; confidence: number }>;
+  fields: Array<{
+    key: string;
+    components: Array<{ subKey: string; subLabel: string; value: string; confidence: number }>;
+  }>;
   isUpdate: boolean;
 };
 
@@ -377,13 +395,36 @@ const fieldExtractionSchema = z.object({
   fields: z.array(
     z.object({
       key: z.string(),
-      value: z.string(),
-      confidence: z.number(),
+      components: z.array(
+        z.object({
+          subKey: z
+            .string()
+            .describe(
+              'Stable snake_case identifier for this specific attribute. Use "value" for simple scalar fields (numbers, single names, dates) — the new value fully REPLACES the old one. For fields that can describe several distinct attributes (e.g. a "roof description" covering material, age, size), invent one short stable key per attribute (e.g. "material", "age_years", "square_feet") mentioned in the CURRENT message. Reuse the EXACT key shown under "existing sub-fields" when updating the same attribute again — only invent a new key for an attribute never seen before.'
+            ),
+          subLabel: z
+            .string()
+            .describe('Short human-readable label, e.g. "Material", "Age (years)". Use the field\'s own label when subKey is "value".'),
+          value: z.string(),
+          confidence: z.number(),
+          evidence: z
+            .string()
+            .describe(
+              "The exact verbatim substring copied from the CURRENT message that states this value. Must be an exact quote, not a paraphrase. If you cannot quote an exact phrase from the message, do not include this component."
+            ),
+        })
+      ),
     })
   ),
   is_update: z.boolean(),
   reasoning: z.string(),
 });
+
+// Strips whitespace differences so an evidence quote can be matched against the
+// source text without the model needing byte-for-byte formatting.
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
 
 async function extractFields(
   text: string,
@@ -402,9 +443,17 @@ async function extractFields(
       const fields = s.template!.requiredFields
         .map((f) => {
           const collected = s.collectedFields[f.key];
-          const currentVal = collected
-            ? `current: "${collected.value}"`
-            : "not yet collected";
+          let currentVal: string;
+          if (!collected) {
+            currentVal = "not yet collected";
+          } else if (collected.subFields && Object.keys(collected.subFields).length > 0) {
+            const subParts = Object.entries(collected.subFields)
+              .map(([key, sf]) => `${key}="${sf.value}"`)
+              .join(", ");
+            currentVal = `existing sub-fields=[${subParts}]`;
+          } else {
+            currentVal = `current: "${collected.value}"`;
+          }
           const examplesStr = f.examples?.length
             ? ` examples=[${f.examples.map((e) => `"${e}"`).join(", ")}]`
             : "";
@@ -429,12 +478,15 @@ Recent conversation history:
 ${historyLines || "(none)"}
 
 Rules:
-- Extract values ONLY explicitly stated in the message. Never infer or guess.
-- Confidence must be >= 0.7 to include a field. Use 1.0 for unambiguous explicit values.
+- Extract a value ONLY if it is explicitly and verbatim stated in the CURRENT message. Never infer, guess, calculate, round, autocomplete, or use outside knowledge.
+- Each field has one or more "components". Most fields are simple scalars (numbers, single names, dates) — return exactly ONE component with subKey="value"; its value fully replaces whatever was there before.
+- Some fields describe several distinct attributes (e.g. a "roof description" covering material, age, and size). For these, return ONE COMPONENT PER ATTRIBUTE actually mentioned in the CURRENT message — never invent a component for an attribute the message doesn't mention, and never re-emit a component the message doesn't restate just because it's in "existing sub-fields". A component you return always replaces any existing value under the same subKey; attributes you don't mention are left untouched automatically.
+- For every component, "evidence" MUST be an exact verbatim quote copied from the current message that states that component's value — not from history, not paraphrased. If no exact phrase in the message supports it, omit the component entirely.
+- Confidence must be >= 0.9 to include a component. Use 1.0 only when the evidence is unambiguous.
 - Identify the correct stage by field names and context. Users may update completed stages.
 - Set is_update=true if the message corrects or changes a previously stated value.
 - Return stage_order=0 if no fields are relevant to any stage.
-- Only include fields with confidence >= 0.7.`,
+- The conversation history below is for context only (e.g. resolving "that" or "it") — never extract a value from history that is absent from the current message.`,
     ],
     ["human", "Extract fields from: \"{text}\""],
   ]);
@@ -456,9 +508,29 @@ Rules:
   const validKeys = new Set(
     targetStage.template.requiredFields.map((f) => f.key)
   );
-  const validFields = llmResult.fields.filter(
-    (f) => validKeys.has(f.key) && f.confidence >= 0.7
-  );
+
+  // Anti-hallucination gate: reject any component whose "evidence" quote doesn't actually
+  // appear verbatim in the source message. This catches the model inventing values that
+  // sound plausible but were never stated (the #1 hallucination pattern for extraction).
+  const normalizedText = normalizeForMatch(text);
+  const fieldLabelByKey = new Map(targetStage.template.requiredFields.map((f) => [f.key, f.label]));
+  const validFields = llmResult.fields
+    .filter((f) => validKeys.has(f.key))
+    .map((f) => {
+      const components = f.components.filter((c) => {
+        if (c.confidence < 0.9) return false;
+        const evidence = normalizeForMatch(c.evidence ?? "");
+        if (!evidence || !normalizedText.includes(evidence)) {
+          console.warn(
+            `[extractFields] Rejected hallucinated component "${f.key}.${c.subKey}"="${c.value}" — evidence "${c.evidence}" not found verbatim in message "${text}"`
+          );
+          return false;
+        }
+        return true;
+      });
+      return { key: f.key, components };
+    })
+    .filter((f) => f.components.length > 0);
 
   if (validFields.length === 0) return { result: null, prompt };
 
@@ -468,7 +540,15 @@ Rules:
       stageTemplateId: targetStage.stageTemplateId,
       stageName: targetStage.template.name,
       stageOrder: targetStage.stageOrder,
-      fields: validFields,
+      fields: validFields.map((f) => ({
+        key: f.key,
+        components: f.components.map((c) => ({
+          subKey: c.subKey || "value",
+          subLabel: c.subLabel || fieldLabelByKey.get(f.key) || f.key,
+          value: c.value,
+          confidence: c.confidence,
+        })),
+      })),
       isUpdate: llmResult.is_update,
     },
     prompt,
@@ -596,13 +676,21 @@ async function runAIPipeline(
       status: "success",
       details: JSON.stringify({
         intent: intentResult.intent,
+        hasProductQuestion: intentResult.hasProductQuestion,
         confidence: intentResult.confidence,
         reasoning: intentResult.reasoning,
         ...(combinedText ? { batched: true, messageCount: combinedText.split("\n").length } : {}),
       }),
       prompt: intentPrompt,
     });
-    console.log(`[aiChains] intent=${intentResult.intent} confidence=${intentResult.confidence} msg="${inputText.slice(0, 80)}"`);
+    console.log(`[aiChains] intent=${intentResult.intent} hasProductQuestion=${intentResult.hasProductQuestion} confidence=${intentResult.confidence} msg="${inputText.slice(0, 80)}"`);
+
+    // Knowledge source (RAG) must only be queried when there's a genuine product/service
+    // question — the "hybrid" label alone is not trustworthy enough (the model sometimes
+    // conflates a greeting + stage data as "hybrid"), so this flag is the real gate.
+    const shouldQueryKnowledgeSource =
+      intentResult.intent === "product_query" ||
+      (intentResult.intent === "hybrid" && intentResult.hasProductQuestion);
 
     // Shared RAG helper (used for product_query and hybrid)
     const runRAG = async () => {
@@ -743,8 +831,7 @@ async function runAIPipeline(
           await ctx.runMutation(internal.projectStageStates.updateFieldFromAI, {
             stageStateId: extraction.stageStateId,
             fieldKey: field.key,
-            value: field.value,
-            confidence: field.confidence,
+            components: field.components,
             isUpdate: extraction.isUpdate,
             sourceMessageId: messageId,
           });
@@ -758,8 +845,7 @@ async function runAIPipeline(
           stageId: extraction.stageTemplateId,
           fields: extraction.fields.map((f) => ({
             fieldKey: f.key,
-            value: f.value,
-            confidence: f.confidence,
+            components: f.components,
           })),
           isUpdate: extraction.isUpdate,
           intent: intentLabel,
@@ -777,14 +863,18 @@ async function runAIPipeline(
     }
 
     else if (intentResult.intent === "hybrid") {
-      // Run RAG first (answer the question), then extract fields from the same message
-      await runRAG();
+      // Only answer the question if the model flagged a genuine product question —
+      // otherwise this is effectively just stage_filling (e.g. "hello voltage is 700v").
+      if (shouldQueryKnowledgeSource) {
+        await runRAG();
+      }
       const extractOutcome = await runFieldExtraction("hybrid");
-      outcome = extractOutcome === "stage_filled" ? "stage_filled_and_rag" : "rag_answered";
+      outcome = extractOutcome === "stage_filled"
+        ? (shouldQueryKnowledgeSource ? "stage_filled_and_rag" : "stage_filled")
+        : (shouldQueryKnowledgeSource ? "rag_answered" : "no_action");
       await ctx.runMutation(internal.ai.markMessageComplete, {
         messageId,
         intent: "hybrid",
-        ...(extractOutcome === "stage_filled" ? {} : {}),
       });
     }
 

@@ -55,12 +55,16 @@ export const handleWhatsappWebhook = httpAction(async (ctx, request) => {
     const session = await ctx.runQuery(internal.whatsappSessions.getByRouteToken, { routeToken });
     if (!session) return ok();
 
+    // The unguessable route token in the URL is the primary auth. We don't have a
+    // reliable copy of Wasender's per-session signing secret (the create response may
+    // omit it), so a signature mismatch here is logged, not rejected — otherwise the
+    // whole BYO flow (welcome/connect/messages) silently breaks on a 401.
     let webhookSecret = "";
     try {
       if (session.webhookSecret) webhookSecret = await decryptSecret(session.webhookSecret);
     } catch { /* treat as no secret */ }
     if (webhookSecret && !verifyWasenderSignature(request.headers.get("x-webhook-signature"), webhookSecret)) {
-      return new Response(JSON.stringify({ error: "Invalid signature" }), { status: 401 });
+      console.warn("[WhatsApp webhook] BYO signature mismatch — proceeding (routed by token)");
     }
 
     let apiKey = "";

@@ -27,6 +27,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_channelContext from "../lib/channelContext.js";
 import type * as lib_creditPacks from "../lib/creditPacks.js";
 import type * as lib_crypto from "../lib/crypto.js";
+import type * as lib_fieldMerge from "../lib/fieldMerge.js";
 import type * as lib_lineApi from "../lib/lineApi.js";
 import type * as lib_messaging from "../lib/messaging.js";
 import type * as lib_wasenderApi from "../lib/wasenderApi.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "lib/channelContext": typeof lib_channelContext;
   "lib/creditPacks": typeof lib_creditPacks;
   "lib/crypto": typeof lib_crypto;
+  "lib/fieldMerge": typeof lib_fieldMerge;
   "lib/lineApi": typeof lib_lineApi;
   "lib/messaging": typeof lib_messaging;
   "lib/wasenderApi": typeof lib_wasenderApi;

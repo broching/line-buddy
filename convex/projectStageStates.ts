@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { requireMembership } from "./lib/auth";
 import { cancelFieldReminderByKey } from "./reminders";
 import { writeAuditLog } from "./lib/audit";
+import { mergeFieldComponents, type CollectedFieldValue } from "./lib/fieldMerge";
 
 export const listByProject = query({
   args: { projectId: v.id("projects"), organizationId: v.id("organizations") },
@@ -26,18 +27,27 @@ export const updateField = mutation({
     fieldKey: v.string(),
     value: v.string(),
     fieldLabel: v.optional(v.string()),
+    // When set, only this sub-attribute is updated (siblings under the same
+    // field are preserved) — used to edit one part of a composite field
+    // (e.g. just "Material" under "Roof description") without wiping the rest.
+    // When omitted, the whole field is replaced as a plain scalar, discarding
+    // any existing sub-fields — an explicit human override.
+    subKey: v.optional(v.string()),
+    subLabel: v.optional(v.string()),
   },
-  handler: async (ctx, { organizationId, stageStateId, fieldKey, value, fieldLabel }) => {
+  handler: async (ctx, { organizationId, stageStateId, fieldKey, value, fieldLabel, subKey, subLabel }) => {
     const { user } = await requireMembership(ctx, organizationId);
     const state = await ctx.db.get(stageStateId);
     if (!state || state.organizationId !== organizationId) throw new Error("Not found");
 
-    const current = (state.collectedFields as Record<string, unknown>) ?? {};
+    const current = (state.collectedFields ?? {}) as Record<string, CollectedFieldValue>;
+    const now = Date.now();
+    const updatedField: CollectedFieldValue = subKey
+      ? mergeFieldComponents(current[fieldKey], [{ subKey, subLabel: subLabel ?? subKey, value, confidence: 1.0 }], now)
+      : { value, extractedAt: now, confidence: 1.0 };
+
     await ctx.db.patch(stageStateId, {
-      collectedFields: {
-        ...current,
-        [fieldKey]: { value, extractedAt: Date.now(), confidence: 1.0 },
-      },
+      collectedFields: { ...current, [fieldKey]: updatedField },
     });
 
     await cancelFieldReminderByKey(ctx, stageStateId, fieldKey);
@@ -49,13 +59,13 @@ export const updateField = mutation({
       eventType: "field.updated",
       entityType: "projectStageState",
       entityId: stageStateId,
-      payload: { fieldKey, fieldLabel, value },
+      payload: { fieldKey, fieldLabel, subKey, value },
     });
 
     // Insert a system message so the edit appears in the group chat history
     const project = await ctx.db.get(state.projectId);
     if (project) {
-      const label = fieldLabel ?? fieldKey;
+      const label = subLabel ?? fieldLabel ?? fieldKey;
       await ctx.db.insert("messages", {
         organizationId,
         groupChatId: project.groupChatId,
@@ -78,29 +88,27 @@ export const updateFieldFromAI = internalMutation({
   args: {
     stageStateId: v.id("projectStageStates"),
     fieldKey: v.string(),
-    value: v.string(),
-    confidence: v.number(),
+    components: v.array(
+      v.object({
+        subKey: v.string(),
+        subLabel: v.string(),
+        value: v.string(),
+        confidence: v.number(),
+      })
+    ),
     isUpdate: v.boolean(),
     sourceMessageId: v.id("messages"),
   },
-  handler: async (ctx, { stageStateId, fieldKey, value, confidence, isUpdate, sourceMessageId }) => {
+  handler: async (ctx, { stageStateId, fieldKey, components, isUpdate, sourceMessageId }) => {
     const state = await ctx.db.get(stageStateId);
     if (!state) return;
 
-    const current = (state.collectedFields as Record<
-      string,
-      { value: string; extractedAt: number; confidence: number }
-    >) ?? {};
-
-    const prev = current[fieldKey];
-    // Only overwrite if: new field, explicit update, or higher confidence
-    if (prev && !isUpdate && prev.confidence >= confidence) return;
+    const current = (state.collectedFields ?? {}) as Record<string, CollectedFieldValue>;
+    const now = Date.now();
+    const updatedField = mergeFieldComponents(current[fieldKey], components, now);
 
     await ctx.db.patch(stageStateId, {
-      collectedFields: {
-        ...current,
-        [fieldKey]: { value, extractedAt: Date.now(), confidence },
-      },
+      collectedFields: { ...current, [fieldKey]: updatedField },
     });
 
     await cancelFieldReminderByKey(ctx, stageStateId, fieldKey);
@@ -111,20 +119,20 @@ export const updateFieldFromAI = internalMutation({
       eventType: "field.updated",
       entityType: "projectStageState",
       entityId: stageStateId,
-      payload: { fieldKey, value, confidence, isUpdate, sourceMessageId },
+      payload: { fieldKey, components, isUpdate, sourceMessageId },
     });
 
     // Insert a system message so the edit appears in chat history
     const project = await ctx.db.get(state.projectId);
     if (project) {
-      const now = Date.now();
+      const summary = components.map((c) => `${c.subLabel} → "${c.value}"`).join(", ");
       await ctx.db.insert("messages", {
         organizationId: state.organizationId,
         groupChatId: project.groupChatId,
         projectId: state.projectId,
         lineMessageId: `ai_update_${stageStateId}_${fieldKey}_${now}`,
         lineUserId: "system:dashboard",
-        text: `[AI] Updated ${fieldKey} → "${value}"`,
+        text: `[AI] Updated ${fieldKey}: ${summary}`,
         messageType: "other",
         timestamp: now,
         routingMethod: "ai",
@@ -140,14 +148,33 @@ export const clearField = mutation({
     stageStateId: v.id("projectStageStates"),
     fieldKey: v.string(),
     fieldLabel: v.optional(v.string()),
+    // When set, only this sub-attribute is removed; if it's the last
+    // remaining sub-field, the whole field entry is removed too.
+    subKey: v.optional(v.string()),
   },
-  handler: async (ctx, { organizationId, stageStateId, fieldKey, fieldLabel }) => {
+  handler: async (ctx, { organizationId, stageStateId, fieldKey, fieldLabel, subKey }) => {
     const { user } = await requireMembership(ctx, organizationId);
     const state = await ctx.db.get(stageStateId);
     if (!state || state.organizationId !== organizationId) throw new Error("Not found");
 
-    const current = { ...(state.collectedFields as Record<string, unknown>) };
-    delete current[fieldKey];
+    const current = { ...(state.collectedFields as Record<string, CollectedFieldValue>) };
+    if (subKey && current[fieldKey]?.subFields) {
+      const remainingSubFields = { ...current[fieldKey].subFields };
+      delete remainingSubFields[subKey];
+      if (Object.keys(remainingSubFields).length === 0) {
+        delete current[fieldKey];
+      } else {
+        const entries = Object.values(remainingSubFields);
+        current[fieldKey] = {
+          value: entries.map((e) => e.value).join(", "),
+          confidence: Math.min(...entries.map((e) => e.confidence)),
+          extractedAt: Date.now(),
+          subFields: remainingSubFields,
+        };
+      }
+    } else {
+      delete current[fieldKey];
+    }
     await ctx.db.patch(stageStateId, { collectedFields: current });
 
     await writeAuditLog(ctx, {
@@ -157,7 +184,7 @@ export const clearField = mutation({
       eventType: "field.cleared",
       entityType: "projectStageState",
       entityId: stageStateId,
-      payload: { fieldKey, fieldLabel },
+      payload: { fieldKey, fieldLabel, subKey },
     });
 
     const project = await ctx.db.get(state.projectId);

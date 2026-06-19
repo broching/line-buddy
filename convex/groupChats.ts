@@ -4,8 +4,10 @@ import { v } from "convex/values";
 import { requireMembership } from "./lib/auth";
 import { writeAuditLog } from "./lib/audit";
 import { leaveGroup as callLineLeaveGroup } from "./lib/lineApi";
+import { leaveGroup as callWaLeaveGroup } from "./lib/wasenderApi";
 import { sendGroupMessage } from "./lib/messaging";
 import { buildChannelSendInfo, resolveSendCreds } from "./lib/channelContext";
+import { decryptSecret } from "./lib/crypto";
 
 export const list = query({
   args: { organizationId: v.id("organizations") },
@@ -65,7 +67,17 @@ export const get = query({
     await requireMembership(ctx, organizationId);
     const group = await ctx.db.get(groupChatId);
     if (!group || group.organizationId !== organizationId) return null;
-    return group;
+
+    // Is this group on the org's currently-selected mode for its channel? If not,
+    // it's dormant — visible, but the bot won't send/process until the org switches back.
+    const org = await ctx.db.get(organizationId);
+    const channel = group.channel ?? "line";
+    const channelActive =
+      channel === "whatsapp"
+        ? (org?.whatsappMode ?? "byo") === (group.whatsappAgent ?? "byo")
+        : (org?.lineMode ?? "managed") === (group.lineAgent ?? "managed");
+
+    return { ...group, channelActive };
   },
 });
 
@@ -293,9 +305,16 @@ export const leaveGroup = action({
     const group = await ctx.runQuery(api.groupChats.getForServer, { groupChatId, organizationId });
     if (!group) throw new Error("Group not found");
 
-    // Best-effort: tell LINE to remove the bot. WhatsApp groups are simply archived
-    // (the user's own number stays in the group; the bot just stops monitoring it).
-    if ((group.channel ?? "line") === "line") {
+    // Best-effort: tell the platform to remove the bot from the group, then archive.
+    if ((group.channel ?? "line") === "whatsapp") {
+      const apiCtx = await ctx.runQuery(internal.whatsappSessions.getGroupApiContext, { groupChatId });
+      let apiKey: string | undefined;
+      if (apiCtx?.agent === "managed") apiKey = process.env.WASENDER_MANAGED_API_KEY?.trim();
+      else if (apiCtx?.byoApiKeyEnc) {
+        try { apiKey = await decryptSecret(apiCtx.byoApiKeyEnc); } catch { apiKey = undefined; }
+      }
+      if (apiKey) await callWaLeaveGroup(apiKey, group.lineGroupId);
+    } else {
       const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
       if (accessToken) {
         await callLineLeaveGroup(group.lineGroupId, accessToken);

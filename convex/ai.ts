@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { cancelFieldReminderByKey } from "./reminders";
 import { buildChannelSendInfo } from "./lib/channelContext";
+import { mergeFieldComponents, type CollectedFieldValue } from "./lib/fieldMerge";
 
 // ─── Internal queries ─────────────────────────────────────────────────────────
 
@@ -376,8 +377,14 @@ export const commitExtractionForStage = internalMutation({
     fields: v.array(
       v.object({
         fieldKey: v.string(),
-        value: v.string(),
-        confidence: v.number(),
+        components: v.array(
+          v.object({
+            subKey: v.string(),
+            subLabel: v.string(),
+            value: v.string(),
+            confidence: v.number(),
+          })
+        ),
       })
     ),
     isUpdate: v.boolean(),
@@ -398,13 +405,17 @@ export const commitExtractionForStage = internalMutation({
 
     if (args.fields.length === 0) return;
 
-    // Create extraction record
+    // Create extraction record (flattened — one row per field, joining components for display)
     await ctx.db.insert("messageExtractions", {
       messageId: args.messageId,
       organizationId: args.organizationId,
       projectId: args.projectId,
       stageId: args.stageId,
-      extractedFields: args.fields,
+      extractedFields: args.fields.map((f) => ({
+        fieldKey: f.fieldKey,
+        value: f.components.map((c) => c.value).join(", "),
+        confidence: Math.min(...f.components.map((c) => c.confidence)),
+      })),
       modelUsed: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
       promptTokens: 0,
       completionTokens: 0,
@@ -415,21 +426,12 @@ export const commitExtractionForStage = internalMutation({
     const state = await ctx.db.get(args.stageStateId);
     if (!state) return;
 
-    const existing = (state.collectedFields ?? {}) as Record<
-      string,
-      { value: string; extractedAt: number; confidence: number }
-    >;
+    const existing = (state.collectedFields ?? {}) as Record<string, CollectedFieldValue>;
     const updated = { ...existing };
+    const now = Date.now();
     for (const field of args.fields) {
-      const prev = existing[field.fieldKey];
-      if (!prev || args.isUpdate || (prev.confidence ?? 0) < field.confidence) {
-        updated[field.fieldKey] = {
-          value: field.value,
-          extractedAt: Date.now(),
-          confidence: field.confidence,
-        };
-        await cancelFieldReminderByKey(ctx, args.stageStateId, field.fieldKey);
-      }
+      updated[field.fieldKey] = mergeFieldComponents(existing[field.fieldKey], field.components, now);
+      await cancelFieldReminderByKey(ctx, args.stageStateId, field.fieldKey);
     }
     await ctx.db.patch(args.stageStateId, { collectedFields: updated });
   },
