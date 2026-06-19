@@ -19,7 +19,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -532,6 +534,7 @@ function CreateProjectModal({
   const createProject = useMutation(api.projects.create);
   const upsertRoleMappings = useMutation(api.groupChatRoleMappings.upsertMany);
   const refreshProfiles = useAction(api.userLineProfiles.refreshGroupProfiles);
+  const fetchWaMembers = useAction(api.whatsappSessions.fetchGroupMembers);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
@@ -540,9 +543,18 @@ function CreateProjectModal({
   const [roleMappings, setRoleMappings] = useState<RoleMapping[]>([]);
   const [creating, setCreating] = useState(false);
 
+  const lineGroups = groups.filter((g) => (g.channel ?? "line") === "line");
+  const waGroups = groups.filter((g) => g.channel === "whatsapp");
+  const selectedGroup = groups.find((g) => g._id === groupId);
+
+  // Sync the group's members so they can be bound to roles — channel-specific source.
   useEffect(() => {
-    if (!groupId || !orgId) return;
-    refreshProfiles({ groupChatId: groupId as Id<"groupChats">, organizationId: orgId }).catch(() => {});
+    if (!groupId || !orgId || !selectedGroup) return;
+    if (selectedGroup.channel === "whatsapp") {
+      fetchWaMembers({ groupChatId: groupId as Id<"groupChats">, organizationId: orgId }).catch(() => {});
+    } else {
+      refreshProfiles({ groupChatId: groupId as Id<"groupChats">, organizationId: orgId }).catch(() => {});
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, orgId]);
 
@@ -616,9 +628,22 @@ function CreateProjectModal({
               <Select value={groupId} onValueChange={setGroupId} disabled={creating}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {groups.map((g) => (
-                    <SelectItem key={g._id} value={g._id}>{g.displayName}</SelectItem>
-                  ))}
+                  {lineGroups.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>LINE</SelectLabel>
+                      {lineGroups.map((g) => (
+                        <SelectItem key={g._id} value={g._id}>{g.displayName}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {waGroups.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>WhatsApp</SelectLabel>
+                      {waGroups.map((g) => (
+                        <SelectItem key={g._id} value={g._id}>{g.displayName}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -644,7 +669,7 @@ function CreateProjectModal({
           <div className="flex flex-col gap-5 pt-2">
             <div>
               <p className="text-sm font-medium">Assign team members to roles</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Map LINE group members to the roles used in this workflow. You can change this later.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Map {selectedGroup?.channel === "whatsapp" ? "WhatsApp" : "LINE"} group members to the roles used in this workflow. You can change this later.</p>
             </div>
             <div className="flex flex-col gap-3">
               {context?.roles.map((role, i) => (

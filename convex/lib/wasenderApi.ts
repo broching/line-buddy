@@ -174,6 +174,44 @@ export async function decryptMedia(
   return (json.publicUrl ?? json.data?.publicUrl ?? null) as string | null;
 }
 
+export async function getGroupMetadata(
+  apiKey: string,
+  groupJid: string
+): Promise<{ subject: string | null; participants: Array<{ jid: string }> } | null> {
+  const res = await fetch(`${WASENDER_API}/groups/${encodeURIComponent(groupJid)}/metadata`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  const data = (json.data ?? json) as Record<string, unknown>;
+  return {
+    subject: typeof data.subject === "string" ? data.subject : null,
+    participants: Array.isArray(data.participants) ? (data.participants as Array<{ jid: string }>) : [],
+  };
+}
+
+export async function getGroupPicture(apiKey: string, groupJid: string): Promise<string | null> {
+  const res = await fetch(`${WASENDER_API}/groups/${encodeURIComponent(groupJid)}/picture`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return (json.data?.imgUrl ?? json.imgUrl ?? null) as string | null;
+}
+
+export async function getAllContacts(
+  apiKey: string
+): Promise<Array<{ jid?: string; name?: string; notify?: string; verifiedName?: string }>> {
+  const res = await fetch(`${WASENDER_API}/contacts`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const data = json.data ?? json;
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
 export async function getContactPicture(apiKey: string, jid: string): Promise<string | null> {
   const res = await fetch(`${WASENDER_API}/contacts/${encodeURIComponent(jid)}/picture`, {
     headers: { Authorization: `Bearer ${apiKey}` },

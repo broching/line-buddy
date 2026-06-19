@@ -12,7 +12,10 @@ import {
   getQrCode,
   disconnectSession,
   deleteSession,
+  getGroupMetadata,
+  getAllContacts,
 } from "./lib/wasenderApi";
+import { decryptSecret } from "./lib/crypto";
 
 const statusValidator = v.union(
   v.literal("initializing"),
@@ -282,7 +285,7 @@ export const provision = action({
 
     // Create a fresh Wasender session (the previous one, if any, is replaced).
     const session = await createSession({
-      name: name ?? `Line Buddy ${organizationId.slice(-6)}`,
+      name: name ?? `Lead Mighty ${organizationId.slice(-6)}`,
       phoneNumber: phone,
       webhookUrl,
     });
@@ -388,6 +391,72 @@ export const disconnect = action({
   },
 });
 
+// ─── Group member fetch (for project role binding) ───────────────────────────
+
+// Resolves which API key to use for a WhatsApp group + its JID, by the group's agent
+// (managed ⇒ env key, byo ⇒ the org's session key). Independent of the active mode.
+export const getGroupApiContext = internalQuery({
+  args: { groupChatId: v.id("groupChats") },
+  handler: async (ctx, { groupChatId }) => {
+    const group = await ctx.db.get(groupChatId);
+    if (!group || group.channel !== "whatsapp") return null;
+    const agent = group.whatsappAgent ?? "byo";
+    let byoApiKeyEnc: string | null = null;
+    if (agent === "byo") {
+      const session = await ctx.db
+        .query("whatsappSessions")
+        .withIndex("byOrganizationId", (q) => q.eq("organizationId", group.organizationId))
+        .first();
+      byoApiKeyEnc = session?.apiKey ?? null;
+    }
+    return { providerGroupId: group.lineGroupId, organizationId: group.organizationId, agent, byoApiKeyEnc };
+  },
+});
+
+// Fetches the WhatsApp group's participants and stores them as contacts so they can
+// be bound to roles when creating a project (the WhatsApp analog of LINE profile sync).
+export const fetchGroupMembers = action({
+  args: { groupChatId: v.id("groupChats"), organizationId: v.id("organizations") },
+  handler: async (ctx, { groupChatId, organizationId }): Promise<void> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const info = await ctx.runQuery(internal.whatsappSessions.getGroupApiContext, { groupChatId });
+    if (!info || info.organizationId !== organizationId) return;
+
+    let apiKey: string | undefined;
+    if (info.agent === "managed") apiKey = process.env.WASENDER_MANAGED_API_KEY?.trim();
+    else if (info.byoApiKeyEnc) {
+      try { apiKey = await decryptSecret(info.byoApiKeyEnc); } catch { apiKey = undefined; }
+    }
+    if (!apiKey) return;
+
+    const meta = await getGroupMetadata(apiKey, info.providerGroupId);
+    if (!meta || meta.participants.length === 0) return;
+
+    // Build a phone → display name map from the synced contacts (best-effort).
+    const nameByPhone = new Map<string, string>();
+    try {
+      for (const c of await getAllContacts(apiKey)) {
+        const phone = String(c.jid ?? "").split("@")[0].replace(/\D/g, "");
+        const name = c.name || c.notify || c.verifiedName;
+        if (phone && name) nameByPhone.set(phone, name);
+      }
+    } catch { /* names are optional */ }
+
+    for (const p of meta.participants.slice(0, 200)) {
+      const phone = String(p.jid ?? "").split("@")[0].replace(/\D/g, "");
+      if (!phone) continue;
+      await ctx.runMutation(api.userLineProfiles.upsertFromWebhook, {
+        organizationId,
+        channel: "whatsapp",
+        lineUserId: phone,
+        displayName: nameByPhone.get(phone) ?? phone,
+      });
+    }
+  },
+});
+
 // ─── Managed vs BYO mode ──────────────────────────────────────────────────────
 
 const modeValidator = v.union(v.literal("managed"), v.literal("byo"));
@@ -432,6 +501,37 @@ export const clearWelcomes = internalMutation({
     const rows = await ctx.db.query("whatsappWelcomedGroups").take(1000);
     for (const r of rows) await ctx.db.delete(r._id);
     return rows.length;
+  },
+});
+
+// Atomically claim an inbound message id. Returns true the first time only —
+// Wasender re-delivers the same message under multiple webhook events, and command
+// handling (e.g. /connect) runs before storage, so without this the same message
+// gets processed twice.
+export const claimInboundKey = internalMutation({
+  args: { keyId: v.string() },
+  handler: async (ctx, { keyId }) => {
+    const existing = await ctx.db
+      .query("whatsappInboundKeys")
+      .withIndex("byKeyId", (q) => q.eq("keyId", keyId))
+      .unique();
+    if (existing) return false;
+    await ctx.db.insert("whatsappInboundKeys", { keyId, at: Date.now() });
+    return true;
+  },
+});
+
+// Prunes old inbound dedup keys (called by a daily cron).
+export const cleanupInboundKeys = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const old = await ctx.db
+      .query("whatsappInboundKeys")
+      .withIndex("byKeyId")
+      .filter((q) => q.lt(q.field("at"), cutoff))
+      .take(500);
+    for (const row of old) await ctx.db.delete(row._id);
   },
 });
 

@@ -250,13 +250,15 @@ export const updateMetaInternal = internalMutation({
   args: {
     groupChatId: v.id("groupChats"),
     displayName: v.optional(v.string()),
+    pictureUrl: v.optional(v.string()),
     memberCount: v.optional(v.number()),
   },
-  handler: async (ctx, { groupChatId, displayName, memberCount }) => {
+  handler: async (ctx, { groupChatId, displayName, pictureUrl, memberCount }) => {
     const group = await ctx.db.get(groupChatId);
     if (!group) return;
     const patch: Record<string, unknown> = {};
     if (displayName && displayName !== group.displayName) patch.displayName = displayName;
+    if (pictureUrl && pictureUrl !== group.pictureUrl) patch.pictureUrl = pictureUrl;
     if (memberCount != null) patch.memberCount = memberCount;
     if (Object.keys(patch).length > 0) await ctx.db.patch(groupChatId, patch);
   },

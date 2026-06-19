@@ -16,6 +16,7 @@ import type * as auditLogs from "../auditLogs.js";
 import type * as billing from "../billing.js";
 import type * as clerkWebhook from "../clerkWebhook.js";
 import type * as connectTokens from "../connectTokens.js";
+import type * as crons from "../crons.js";
 import type * as fileStorage from "../fileStorage.js";
 import type * as groupChatRoleMappings from "../groupChatRoleMappings.js";
 import type * as groupChats from "../groupChats.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   billing: typeof billing;
   clerkWebhook: typeof clerkWebhook;
   connectTokens: typeof connectTokens;
+  crons: typeof crons;
   fileStorage: typeof fileStorage;
   groupChatRoleMappings: typeof groupChatRoleMappings;
   groupChats: typeof groupChats;

@@ -348,7 +348,7 @@ export default function WhatsAppSettingsPage({
               </CardTitle>
               <CardDescription>
                 {connected
-                  ? `Connected${session?.phoneNumber ? ` as ${session.phoneNumber}` : ""}. This number acts as your Line Buddy bot — keep the phone online.`
+                  ? `Connected${session?.phoneNumber ? ` as ${session.phoneNumber}` : ""}. This number acts as your Lead Mighty bot — keep the phone online.`
                   : "Open WhatsApp on the phone you want as your bot → Linked devices → Link a device, then scan the QR below."}
               </CardDescription>
             </CardHeader>

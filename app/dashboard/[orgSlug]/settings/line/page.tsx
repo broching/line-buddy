@@ -227,8 +227,8 @@ export default function LineSettingsPage({
                 </CardTitle>
                 <CardDescription>
                   {LINE_ADD_URL
-                    ? "Scan to add the Line Buddy bot as a friend, then add it to your group."
-                    : "The shared bot is managed by Line Buddy and always available."}
+                    ? "Scan to add the Lead Mighty bot as a friend, then add it to your group."
+                    : "The shared bot is managed by Lead Mighty and always available."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
@@ -355,7 +355,7 @@ export default function LineSettingsPage({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <ol className="text-sm text-muted-foreground flex flex-col gap-2 list-decimal list-inside">
-                <li>Add the {managed ? "Line Buddy" : "your"} bot to the LINE group.</li>
+                <li>Add the {managed ? "Lead Mighty" : "your"} bot to the LINE group.</li>
                 <li>Open Group Chats and generate a connect token.</li>
                 <li>Send the token as a message in the LINE group.</li>
               </ol>

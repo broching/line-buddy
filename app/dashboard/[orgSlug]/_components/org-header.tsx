@@ -13,7 +13,7 @@ function getPageTitle(pathname: string, orgSlug: string): string {
   if (pathname.startsWith(`${base}/members`)) return "Members";
   if (pathname.startsWith(`${base}/settings`)) return "Settings";
   if (pathname.startsWith(`${base}/activity`)) return "Activity";
-  return "Line Buddy";
+  return "Lead Mighty";
 }
 
 export function OrgHeader({

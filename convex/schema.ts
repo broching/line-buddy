@@ -139,6 +139,12 @@ export default defineSchema({
     welcomedAt: v.number(),
   }).index("byProviderGroupId", ["providerGroupId"]),
 
+  // ─── WhatsApp inbound dedup (Wasender re-delivers a message under several events) ──
+  whatsappInboundKeys: defineTable({
+    keyId: v.string(), // provider message id
+    at: v.number(),
+  }).index("byKeyId", ["keyId"]),
+
   // ─── Group Chats (connected LINE / WhatsApp groups) ──────────────────────────
   groupChats: defineTable({
     organizationId: v.id("organizations"),

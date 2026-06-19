@@ -30,7 +30,7 @@ async function storeBotReply(ctx: any, group: { _id: Id<"groupChats">; organizat
   } catch { /* non-critical */ }
 }
 
-const HELP_TEXT = `📋 Line Buddy Commands
+const HELP_TEXT = `📋 Lead Mighty Commands
 
 /new-project NAME — Create a new project in this group
 /projects — List active projects in this group
@@ -134,7 +134,7 @@ async function handleJoin(event: LineJoinEvent, accessToken: string) {
   await replyMessage(
     event.replyToken,
     accessToken,
-    `👋 Hi! I'm Line Buddy.\n\nType /connect TOKEN to link this group to your organization, or /help to see all commands.`
+    `👋 Hi! I'm Lead Mighty.\n\nType /connect TOKEN to link this group to your organization, or /help to see all commands.`
   );
 }
 
@@ -275,7 +275,7 @@ async function handleTextMessage(ctx: any, event: LineMessageEvent, accessToken:
 
   // Commands below require a connected group
   if (!group || !group.isActive) {
-    await replyMessage(event.replyToken, accessToken, "This group is not connected to Line Buddy. Type /connect TOKEN to link it.");
+    await replyMessage(event.replyToken, accessToken, "This group is not connected to Lead Mighty. Type /connect TOKEN to link it.");
     return;
   }
 

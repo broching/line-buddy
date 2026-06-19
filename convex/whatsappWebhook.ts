@@ -2,13 +2,13 @@ import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { decryptSecret } from "./lib/crypto";
-import { verifyWasenderSignature, decryptMedia, isGroupJid } from "./lib/wasenderApi";
+import { verifyWasenderSignature, decryptMedia, isGroupJid, getGroupMetadata, getGroupPicture } from "./lib/wasenderApi";
 import { sendGroupMessage, type SendCreds } from "./lib/messaging";
 
 const WEBHOOK_PREFIX = "/webhooks/whatsapp/";
 const MANAGED_PATH = "/webhooks/whatsapp-managed";
 
-const HELP_TEXT = `📋 Line Buddy Commands
+const HELP_TEXT = `📋 Lead Mighty Commands
 
 /new-project NAME — Create a new project in this group
 /projects — List active projects in this group
@@ -16,7 +16,7 @@ const HELP_TEXT = `📋 Line Buddy Commands
 /connect TOKEN — Link this group to your organization
 /help — Show this message`;
 
-const WELCOME_TEXT = `👋 Hi! I'm Line Buddy.
+const WELCOME_TEXT = `👋 Hi! I'm Lead Mighty.
 
 Type /connect TOKEN to link this group to your organization, or /help to see all commands.`;
 
@@ -202,8 +202,18 @@ async function handleIncomingMessage(ctx: any, payload: any, env: Env) {
 
   const messageId: string = String(key.id ?? `${groupJid}_${Date.now()}`);
   const userId = senderPhone(key);
+  const senderName: string | undefined =
+    (typeof msg.pushName === "string" && msg.pushName.trim()) ? msg.pushName.trim() : undefined;
   const text: string = (msg.messageBody ?? msg.message?.conversation ?? "").trim();
   const media = detectMedia(msg.message);
+
+  // Dedup actionable messages: Wasender re-delivers the same message under several
+  // events (messages.received + messages-group.received + messages.upsert). We only
+  // claim once there's real content, so an empty/protocol event can't "use up" the id.
+  if (key.id && (text || media)) {
+    const fresh = await ctx.runMutation(internal.whatsappSessions.claimInboundKey, { keyId: messageId });
+    if (!fresh) return;
+  }
 
   // ── /connect TOKEN — works before the group is registered ──
   if (text.startsWith("/connect")) {
@@ -212,6 +222,10 @@ async function handleIncomingMessage(ctx: any, payload: any, env: Env) {
   }
 
   const group = await ctx.runQuery(api.groupChats.getByLineGroupId, { lineGroupId: groupJid });
+
+  // Fallback welcome: first activity in a group the bot is in but isn't connected yet
+  // (covers cases where groups.upsert wasn't delivered). Dedup keeps it to once.
+  if (!group) await maybeWelcome(ctx, env, groupJid);
 
   // ── Media message ──
   if (media) {
@@ -245,12 +259,12 @@ async function handleIncomingMessage(ctx: any, payload: any, env: Env) {
       skipAI: !hasActiveProjects || !isActiveMode,
     });
 
-    // Track the sender so role-mapping dropdowns have an entry (name = phone fallback).
+    // Track the sender; use their WhatsApp display name (pushName) when available.
     await ctx.runMutation(api.userLineProfiles.upsertFromWebhook, {
       organizationId: group.organizationId,
       channel: "whatsapp",
       lineUserId: userId,
-      displayName: userId,
+      displayName: senderName ?? userId,
     });
     return;
   }
@@ -272,7 +286,7 @@ async function handleIncomingMessage(ctx: any, payload: any, env: Env) {
 
   if (!group || !group.isActive) {
     if (text.startsWith("/")) {
-      await botSend(ctx, env, groupJid, "This group is not connected to Line Buddy. Type /connect TOKEN to link it.");
+      await botSend(ctx, env, groupJid, "This group is not connected to Lead Mighty. Type /connect TOKEN to link it.");
     }
     return;
   }
@@ -314,10 +328,24 @@ async function handleConnect(ctx: any, env: Env, groupJid: string, messageId: st
   }
   try {
     const { orgName, organizationId } = await ctx.runMutation(api.connectTokens.consume, { token });
+
+    // Pull the real group name + icon from WhatsApp so the dashboard isn't just "WhatsApp Group".
+    let displayName = "WhatsApp Group";
+    let pictureUrl: string | undefined;
+    if (env.apiKey) {
+      try {
+        const meta = await getGroupMetadata(env.apiKey, groupJid);
+        if (meta?.subject) displayName = meta.subject;
+        const pic = await getGroupPicture(env.apiKey, groupJid);
+        if (pic) pictureUrl = pic;
+      } catch { /* best-effort */ }
+    }
+
     const groupChatId: Id<"groupChats"> = await ctx.runMutation(api.groupChats.connect, {
       organizationId,
       lineGroupId: groupJid,
-      displayName: "WhatsApp Group",
+      displayName,
+      pictureUrl,
       channel: "whatsapp",
       whatsappAgent: env.managed ? "managed" : "byo",
       whatsappSessionId: env.sessionRowId,
@@ -502,20 +530,41 @@ async function handleGroupsUpsert(ctx: any, payload: any, env: Env) {
   for (const g of groups) {
     if (!g?.jid) continue;
 
-    // Welcome only for genuinely NEW groups. groups.upsert is also re-emitted for all
-    // existing groups on reconnect/metadata change, so gate on a fresh creation time.
-    const createdMs = Number(g.creation) * 1000;
-    const isNew = Number.isFinite(createdMs) && createdMs > 0 && Date.now() - createdMs < 10 * 60 * 1000;
-    if (isNew) await maybeWelcome(ctx, env, g.jid);
+    // Welcome only for genuinely NEW groups (groups.upsert is also re-emitted for
+    // existing groups on reconnect). New ⇒ the bot created/owns it, or it was just
+    // created. `creation` is unix seconds when present (sometimes absent).
+    const botPhone = (env.botPhone ?? "").replace(/\D/g, "");
+    const owner = String(g.owner ?? "").split("@")[0].replace(/\D/g, "");
+    const ownedByBot = !!botPhone && !!owner && (owner === botPhone || owner.endsWith(botPhone) || botPhone.endsWith(owner));
+
+    let createdMs = Number(g.creation);
+    if (Number.isFinite(createdMs) && createdMs > 0) {
+      if (createdMs < 1e12) createdMs *= 1000; // seconds → ms
+    } else {
+      createdMs = 0;
+    }
+    const recentlyCreated = createdMs > 0 && Date.now() - createdMs < 10 * 60 * 1000;
+
+    console.log(`[WhatsApp webhook] groups.upsert jid=${g.jid} owner=${owner} ownedByBot=${ownedByBot} recentlyCreated=${recentlyCreated}`);
+    if (ownedByBot || recentlyCreated) await maybeWelcome(ctx, env, g.jid);
 
     const group = await ctx.runQuery(api.groupChats.getByLineGroupId, { lineGroupId: g.jid });
     if (!group) continue;
     // BYO: only touch groups owned by this session's org. Managed: any connected group.
     if (!env.managed && env.organizationId && group.organizationId !== env.organizationId) continue;
 
+    // Backfill the group icon for groups connected before we fetched it.
+    let pictureUrl: string | undefined;
+    if (env.apiKey && !group.pictureUrl) {
+      try {
+        pictureUrl = (await getGroupPicture(env.apiKey, g.jid)) ?? undefined;
+      } catch { /* best-effort */ }
+    }
+
     await ctx.runMutation(internal.groupChats.updateMetaInternal, {
       groupChatId: group._id,
       displayName: typeof g.subject === "string" ? g.subject : undefined,
+      pictureUrl,
       memberCount: Array.isArray(g.participants) ? g.participants.length : undefined,
     });
 
