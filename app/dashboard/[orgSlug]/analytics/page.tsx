@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
-import { useQuery } from "convex/react";
+import { use, useEffect, useState } from "react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
@@ -20,6 +20,15 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Link from "next/link";
 import {
   IconBrain,
@@ -27,7 +36,9 @@ import {
   IconCoins,
   IconExternalLink,
   IconFolderOpen,
+  IconLoader2,
   IconMessage2,
+  IconSearch,
 } from "@tabler/icons-react";
 import { CreditUsageCards } from "@/components/billing/credit-usage";
 import { PaywallGate } from "@/components/billing/paywall-gate";
@@ -49,8 +60,8 @@ const REMINDER_COLORS: Record<string, string> = {
 };
 
 const TOOLTIP_STYLE = {
-  background: "hsl(var(--card))",
-  border: "1px solid hsl(var(--border))",
+  background: "var(--card)",
+  border: "1px solid var(--border)",
   borderRadius: "8px",
   fontSize: "12px",
 };
@@ -168,22 +179,22 @@ export default function AnalyticsPage({
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="hsl(var(--border))"
+                  stroke="var(--border)"
                   vertical={false}
                 />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   axisLine={false}
                   tickLine={false}
                   allowDecimals={false}
                 />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted))" }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "var(--muted)" }} />
                 <Bar
                   dataKey="Messages"
                   fill="#3b82f6"
@@ -293,6 +304,7 @@ type UsageEntry = {
   metadata?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } | null;
   message: { _id: Id<"messages">; text: string | null } | null;
   groupChat: { _id: Id<"groupChats">; name: string } | null;
+  project: { _id: Id<"projects">; name: string } | null;
 };
 
 function CreditUsageHistory({
@@ -302,44 +314,77 @@ function CreditUsageHistory({
   organizationId: Id<"organizations">;
   orgSlug: string;
 }) {
-  const [limit, setLimit] = useState(20);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [projectId, setProjectId] = useState<string>("__all__");
 
-  const entries = useQuery(api.billing.getUsageHistory, { organizationId, limit }) as UsageEntry[] | undefined;
-
-  const hasMore = (entries?.length ?? 0) >= limit;
-
+  // Debounce the search box so we don't re-query on every keystroke.
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !hasMore) return;
-    const observer = new IntersectionObserver(
-      (es) => { if (es[0]?.isIntersecting) setLimit((l) => l + 20); },
-      { threshold: 0.1 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore]);
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const projects = useQuery(api.projects.list, { organizationId }) as
+    | Array<{ _id: Id<"projects">; name: string }>
+    | undefined;
+
+  const { results: entries, status, loadMore } = usePaginatedQuery(
+    api.billing.getUsageHistory,
+    {
+      organizationId,
+      search: search || undefined,
+      projectId: projectId === "__all__" ? undefined : (projectId as Id<"projects">),
+    },
+    { initialNumItems: 20 }
+  );
+  const usageEntries = entries as UsageEntry[];
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <IconCoins className="size-4 text-amber-500" />
-          AI credit usage
-        </CardTitle>
-        <CardDescription>One credit per AI pipeline run — click a message to view it in the group chat</CardDescription>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <IconCoins className="size-4 text-amber-500" />
+              AI credit usage
+            </CardTitle>
+            <CardDescription>One credit per AI pipeline run — click a message to view it in the group chat</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search usage…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="h-8 w-44 pl-8 text-xs"
+              />
+            </div>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="h-8 w-40 text-xs">
+                <SelectValue placeholder="All projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All projects</SelectItem>
+                {(projects ?? []).map((p) => (
+                  <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {entries === undefined ? (
+        {status === "LoadingFirstPage" ? (
           <div className="flex flex-col gap-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
           </div>
-        ) : entries.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">No AI usage yet.</p>
+        ) : usageEntries.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">No matching usage entries.</p>
         ) : (
           <>
-            <div className="flex flex-col divide-y">
-              {entries.map((entry) => {
+            <div className="flex flex-col divide-y max-h-[420px] overflow-y-auto pr-1">
+              {usageEntries.map((entry) => {
                 const tokens = entry.metadata?.totalTokens;
                 const groupLink = entry.groupChat && entry.message
                   ? `/dashboard/${orgSlug}/groups/${entry.groupChat._id}`
@@ -371,9 +416,16 @@ function CreditUsageHistory({
                             {tokens ? `AI processing (${tokens.toLocaleString()} tokens)` : "AI processing"}
                           </span>
                         )}
-                        {tokens && groupLink && (
-                          <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {entry.project && (
+                            <Badge variant="secondary" className="text-[10px] py-0 h-4 shrink-0">
+                              {entry.project.name}
+                            </Badge>
+                          )}
+                          {tokens && groupLink && (
+                            <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
@@ -391,9 +443,16 @@ function CreditUsageHistory({
                 );
               })}
             </div>
-            {hasMore && (
-              <div ref={sentinelRef} className="flex justify-center py-4">
-                <Skeleton className="h-4 w-24" />
+            {status === "CanLoadMore" && (
+              <div className="flex justify-center pt-4">
+                <Button variant="outline" size="sm" onClick={() => loadMore(20)}>
+                  Load more
+                </Button>
+              </div>
+            )}
+            {status === "LoadingMore" && (
+              <div className="flex justify-center pt-4">
+                <IconLoader2 className="size-4 animate-spin text-muted-foreground" />
               </div>
             )}
           </>

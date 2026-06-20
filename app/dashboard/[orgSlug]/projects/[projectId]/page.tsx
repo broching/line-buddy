@@ -515,6 +515,11 @@ function CollapsibleStageRow({
           <p className={`text-sm font-medium truncate ${state.status === "pending" ? "text-muted-foreground" : ""}`}>
             {template?.name ?? `Stage ${state.stageOrder}`}
           </p>
+          {template?.description && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              {template.description}
+            </p>
+          )}
           {totalCount > 0 && (
             <p className="text-xs text-muted-foreground">
               {filledCount}/{totalCount} field{totalCount !== 1 ? "s" : ""} collected
@@ -546,7 +551,7 @@ function CollapsibleStageRow({
         <>
           <Separator />
           <div className="px-4 py-3">
-            <StageFieldsList state={state} orgId={orgId} editable={false} />
+            <StageFieldsList state={state} orgId={orgId} editable />
           </div>
         </>
       )}
@@ -901,6 +906,8 @@ function RoleMappingsPanel({
 
   if (context === undefined) return <Skeleton className="h-32 rounded-xl" />;
 
+  const teamNames = Array.from(new Set(context.roles.map((r) => r.teamName ?? "General")));
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -928,19 +935,34 @@ function RoleMappingsPanel({
       <CardContent className="pt-0 flex flex-col gap-3">
         {context.roles.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">This workflow template has no role-based stages.</p>
-        ) : editing ? (
-          draftMappings.map((m, i) => {
-            const role = context.roles[i];
-            return (
-              <RoleEditRow key={role.roleId} role={role} lineUserId={m.lineUserId} knownUsers={context.knownUsers}
-                onChange={(v) => setDraftMappings((prev) => { const next = [...prev]; next[i] = { roleId: role.roleId, lineUserId: v }; return next; })}
-              />
-            );
-          })
         ) : (
-          context.roles.map((role) => (
-            <RoleViewRow key={role.roleId} role={role} knownUsers={context.knownUsers} />
-          ))
+          <Tabs defaultValue={teamNames[0]} className="flex flex-col gap-3">
+            {teamNames.length > 1 && (
+              <TabsList className="w-fit">
+                {teamNames.map((name) => (
+                  <TabsTrigger key={name} value={name} className="text-xs">{name}</TabsTrigger>
+                ))}
+              </TabsList>
+            )}
+            {teamNames.map((name) => (
+              <TabsContent key={name} value={name} className="flex flex-col gap-3 mt-0">
+                {context.roles.map((role, i) => {
+                  if ((role.teamName ?? "General") !== name) return null;
+                  return editing ? (
+                    <RoleEditRow
+                      key={role.roleId}
+                      role={role}
+                      lineUserId={draftMappings[i]?.lineUserId ?? ""}
+                      knownUsers={context.knownUsers}
+                      onChange={(v) => setDraftMappings((prev) => { const next = [...prev]; next[i] = { roleId: role.roleId, lineUserId: v }; return next; })}
+                    />
+                  ) : (
+                    <RoleViewRow key={role.roleId} role={role} knownUsers={context.knownUsers} />
+                  );
+                })}
+              </TabsContent>
+            ))}
+          </Tabs>
         )}
       </CardContent>
     </Card>

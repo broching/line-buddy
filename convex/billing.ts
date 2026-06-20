@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { requireMembership, computeOrgRole } from "./lib/auth";
 import { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
@@ -678,31 +679,47 @@ export const getTransactionHistory = query({
 export const getUsageHistory = query({
   args: {
     organizationId: v.id("organizations"),
-    limit: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
+    search: v.optional(v.string()),
+    projectId: v.optional(v.id("projects")),
   },
-  handler: async (ctx, { organizationId, limit = 50 }) => {
+  handler: async (ctx, { organizationId, paginationOpts, search, projectId }) => {
     await requireMembership(ctx, organizationId);
-    const usageTxs = await ctx.db
+
+    const result = await ctx.db
       .query("creditTransactions")
       .withIndex("byOrganizationAndCreatedAt", (q) =>
         q.eq("organizationId", organizationId)
       )
       .filter((q) => q.eq(q.field("type"), "usage"))
       .order("desc")
-      .take(limit);
+      .paginate(paginationOpts);
 
-    return Promise.all(
-      usageTxs.map(async (tx) => {
+    const enriched = await Promise.all(
+      result.page.map(async (tx) => {
         const messageId = tx.metadata?.messageId as string | undefined;
-        if (!messageId) return { ...tx, message: null, groupChat: null };
-        const message = await ctx.db.get(messageId as Id<"messages">);
+        const message = messageId ? await ctx.db.get(messageId as Id<"messages">) : null;
         const groupChat = message?.groupChatId ? await ctx.db.get(message.groupChatId) : null;
+        const project = message?.projectId ? await ctx.db.get(message.projectId) : null;
         return {
           ...tx,
           message: message ? { _id: message._id, text: message.text ?? null } : null,
           groupChat: groupChat ? { _id: groupChat._id, name: groupChat.displayName } : null,
+          project: project ? { _id: project._id, name: project.name } : null,
         };
       })
     );
+
+    const search_ = search?.trim().toLowerCase();
+    const page = enriched.filter((tx) => {
+      if (projectId && tx.project?._id !== projectId) return false;
+      if (search_) {
+        const haystack = `${tx.description} ${tx.message?.text ?? ""} ${tx.groupChat?.name ?? ""} ${tx.project?.name ?? ""}`.toLowerCase();
+        if (!haystack.includes(search_)) return false;
+      }
+      return true;
+    });
+
+    return { ...result, page };
   },
 });

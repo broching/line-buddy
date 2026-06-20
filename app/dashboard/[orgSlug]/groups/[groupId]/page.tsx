@@ -194,6 +194,13 @@ export default function GroupDetailPage({
   // Oldest-first display order (rawMessages is newest-first from paginated query)
   const messages = [...(rawMessages as ChatMessage[])].reverse();
 
+  // The page component instance is reused across group navigations (same route,
+  // different params), so this ref must reset per-group or only the first group
+  // ever opened would scroll to bottom.
+  useEffect(() => {
+    isInitialLoad.current = true;
+  }, [groupId]);
+
   // Scroll to bottom on first load; restore position after loading more
   useEffect(() => {
     const el = chatContainerRef.current;
