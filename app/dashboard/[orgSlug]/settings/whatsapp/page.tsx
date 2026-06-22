@@ -295,7 +295,7 @@ export default function WhatsAppSettingsPage({
           </div>
           {managed && (
             <p className="text-xs text-muted-foreground mt-2">
-              Switching to your own number will disconnect the managed bot for new messages.
+              Switching to your own number will disconnect the managed agent for new messages.
             </p>
           )}
         </div>
@@ -344,12 +344,12 @@ export default function WhatsAppSettingsPage({
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <IconDeviceMobile className="size-4" />
-                Bot number
+                Agent number
               </CardTitle>
               <CardDescription>
                 {connected
-                  ? `Connected${session?.phoneNumber ? ` as ${session.phoneNumber}` : ""}. This number acts as your Lead Mighty bot — keep the phone online.`
-                  : "Open WhatsApp on the phone you want as your bot → Linked devices → Link a device, then scan the QR below."}
+                  ? `Connected${session?.phoneNumber ? ` as ${session.phoneNumber}` : ""}. This number acts as your Lead Mighty agent — keep the phone online.`
+                  : "Open WhatsApp on the phone you want as your agent → Linked devices → Link a device, then scan the QR below."}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
@@ -388,7 +388,7 @@ export default function WhatsAppSettingsPage({
                   {showPhoneInput && (
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-medium text-muted-foreground">
-                        Bot WhatsApp number
+                        Agent WhatsApp number
                       </label>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <PhoneInput
@@ -459,7 +459,7 @@ export default function WhatsAppSettingsPage({
                   </li>
                 ) : (
                   <>
-                    <li>Make sure your bot number is connected.</li>
+                    <li>Make sure your agnet number is connected.</li>
                     <li>Add that number to your WhatsApp group.</li>
                   </>
                 )}
@@ -477,7 +477,7 @@ export default function WhatsAppSettingsPage({
               </Button>
               {!linkingEnabled && (
                 <p className="text-xs text-muted-foreground">
-                  Connect your bot number first to enable group linking.
+                  Connect your agent number first to enable group linking.
                 </p>
               )}
 
@@ -530,7 +530,7 @@ export default function WhatsAppSettingsPage({
             <DialogDescription>
               {pendingMode === "managed"
                 ? "New messages will be handled by the shared LeadMighty number. Your own number will be disconnected, and groups linked to it stay visible but won't be processed until you switch back."
-                : "New messages will be handled by your own scanned number. Groups linked to the managed bot stay visible but won't be processed until you switch back."}
+                : "New messages will be handled by your own scanned number. Groups linked to the managed agent stay visible but won't be processed until you switch back."}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">

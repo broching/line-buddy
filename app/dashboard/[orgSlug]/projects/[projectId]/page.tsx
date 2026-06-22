@@ -181,7 +181,7 @@ export default function ProjectDetailPage({
   async function handlePause() {
     const ok = await confirmDialog({
       title: "Pause AI processing?",
-      description: "The bot will stop sending reminders and advancing stages for this project. You can resume at any time.",
+      description: "The agent will stop sending reminders and advancing stages for this project. You can resume at any time.",
       confirmLabel: "Pause",
       variant: "default",
     });
@@ -197,7 +197,7 @@ export default function ProjectDetailPage({
   async function handleResume() {
     const ok = await confirmDialog({
       title: "Resume project?",
-      description: "The bot will resume sending reminders and processing messages for this project.",
+      description: "The agent will resume sending reminders and processing messages for this project.",
       confirmLabel: "Resume",
       variant: "default",
     });

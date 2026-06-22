@@ -178,7 +178,7 @@ export default function GroupsPage({
             <IconMessage2 className="size-10 text-muted-foreground/30" />
             <p className="font-medium text-sm">No groups connected yet</p>
             <p className="text-xs text-muted-foreground">
-              Add a bot to a group, then click &ldquo;Connect group&rdquo;
+              Add a agent to a group, then click &ldquo;Connect group&rdquo;
             </p>
             <Button size="sm" variant="outline" onClick={() => setShowConnect(true)}>
               <IconPlus className="size-3.5" />
@@ -198,12 +198,12 @@ export default function GroupsPage({
             >
               <Tabs defaultValue="managed" className="gap-0">
                 <TabsList className="mx-3 mt-2">
-                  <TabsTrigger value="managed">LeadMighty&apos;s bot ({lineManaged.length})</TabsTrigger>
-                  <TabsTrigger value="byok">Your own bot ({lineByok.length})</TabsTrigger>
+                  <TabsTrigger value="managed">LeadMighty&apos;s agent ({lineManaged.length})</TabsTrigger>
+                  <TabsTrigger value="byok">Your own agent ({lineByok.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="managed">
                   {lineManaged.length === 0 ? (
-                    <EmptyHint text="No groups on the managed bot yet" />
+                    <EmptyHint text="No groups on the managed agent yet" />
                   ) : (
                     <div className="divide-y">
                       {lineManaged.map((g) => (
@@ -214,7 +214,7 @@ export default function GroupsPage({
                 </TabsContent>
                 <TabsContent value="byok">
                   {lineByok.length === 0 ? (
-                    <EmptyHint text="No groups on your own bot yet" />
+                    <EmptyHint text="No groups on your own agent yet" />
                   ) : (
                     <div className="divide-y">
                       {lineByok.map((g) => (
@@ -241,7 +241,7 @@ export default function GroupsPage({
                 </TabsList>
                 <TabsContent value="managed">
                   {waManaged.length === 0 ? (
-                    <EmptyHint text="No groups on the managed bot yet" />
+                    <EmptyHint text="No groups on the managed agent yet" />
                   ) : (
                     <div className="divide-y">
                       {waManaged.map((g) => (
@@ -310,7 +310,7 @@ export default function GroupsPage({
           <DialogHeader>
             <DialogTitle>Leave group chat?</DialogTitle>
             <DialogDescription>
-              The bot will stop monitoring <strong>{leaveTarget?.displayName}</strong>
+              The agent will stop monitoring <strong>{leaveTarget?.displayName}</strong>
               {leaveTarget?.channel === "whatsapp" ? "" : " on LINE"}. Past messages will be
               preserved in the archive.
             </DialogDescription>
@@ -468,9 +468,9 @@ function ConnectGroupModal({
   const isWa = channel === "whatsapp";
   const addBotStep = isWa
     ? whatsappMode === "managed"
-      ? `Add the LeadMighty bot (${MANAGED_WHATSAPP_NUMBER}) to your WhatsApp group`
+      ? `Add the LeadMighty agent (${MANAGED_WHATSAPP_NUMBER}) to your WhatsApp group`
       : "Add your connected WhatsApp number to the group"
-    : "Add your LINE bot to the group chat";
+    : "Add your LINE agent to the group chat";
 
   useEffect(() => {
     if (activeTokens && activeTokens.length > 0) {
@@ -527,7 +527,7 @@ function ConnectGroupModal({
         <DialogHeader>
           <DialogTitle>Connect a group</DialogTitle>
           <DialogDescription>
-            Generate a token, add the bot to your group, then send the command in the chat.
+            Generate a token, add the agent to your group, then send the command in the chat.
           </DialogDescription>
         </DialogHeader>
 

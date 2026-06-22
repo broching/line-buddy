@@ -251,7 +251,7 @@ export default function GroupDetailPage({
     const ok = await confirmDialog({
       title: `Leave "${group.displayName}"?`,
       description:
-        "The bot will leave this LINE group and stop monitoring it. Past messages will be preserved in the archive.",
+        "The agent will leave this LINE group and stop monitoring it. Past messages will be preserved in the archive.",
       confirmLabel: "Leave group",
       variant: "destructive" as const,
     });
@@ -314,7 +314,7 @@ export default function GroupDetailPage({
             </Badge>
             {group.isActive && group.channelActive === false && (
               <Badge variant="outline" className="text-xs shrink-0 border-amber-500/50 text-amber-600">
-                Paused — bot not selected
+                Paused — agent not selected
               </Badge>
             )}
           </div>
@@ -612,7 +612,7 @@ function ChatBubble({
 
   // Bot messages (dashboard push or AI clarification) → right-aligned blue bubble
   if (isBot) {
-    const botLabel = message.sentByName ? `Bot (sent by ${message.sentByName})` : "Bot";
+    const botLabel = message.sentByName ? `agent (sent by ${message.sentByName})` : "Bot";
     return (
       <div className="flex items-start gap-2 py-0.5 justify-end group">
         <div className="flex flex-col items-end min-w-0 max-w-[75%]">
@@ -2187,7 +2187,7 @@ function ComposeBar({
           <IconDoorExit className="size-4 text-destructive" />
         </div>
         <div className="min-w-0">
-          <p className="font-medium text-foreground text-sm">Bot has left this group</p>
+          <p className="font-medium text-foreground text-sm">Agent has left this group</p>
           <p className="text-xs text-muted-foreground">This chat is archived — no new messages will be received or sent.</p>
         </div>
       </div>
@@ -2202,10 +2202,10 @@ function ComposeBar({
           <IconAlertTriangle className="size-4 text-amber-600" />
         </div>
         <div className="min-w-0">
-          <p className="font-medium text-foreground text-sm">This {channelLabel} bot isn&apos;t active</p>
+          <p className="font-medium text-foreground text-sm">This {channelLabel} agent  isn&apos;t active</p>
           <p className="text-xs text-muted-foreground">
             You&apos;ve switched delivery method, so this group is paused — messages aren&apos;t sent or
-            processed. Re-select its bot in Settings → Channels to resume.
+            processed. Re-select its agent in Settings → Channels to resume.
           </p>
         </div>
       </div>

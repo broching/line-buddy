@@ -3,7 +3,6 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { QRCodeSVG } from "qrcode.react";
 import {
   Card,
   CardContent,
@@ -125,7 +124,7 @@ export default function LineSettingsPage({
     try {
       await setMode({ organizationId: org._id, mode: target });
       setView(target);
-      toast.success(target === "managed" ? "Switched to LeadMighty's bot" : "Switched to your own bot");
+      toast.success(target === "managed" ? "Switched to LeadMighty's agent" : "Switched to your own agent");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to switch");
       setView(null);
@@ -197,7 +196,7 @@ export default function LineSettingsPage({
             <ModeOption
               selected={effectiveView === "managed"}
               live={mode === "managed"}
-              title="LeadMighty's bot"
+              title="LeadMighty's agent"
               badge="Recommended"
               desc="Use our shared LINE bot. No setup — just add it to your group."
               icon={<IconShieldCheck className="size-5 text-green-600" />}
@@ -226,17 +225,13 @@ export default function LineSettingsPage({
                   Managed bot
                 </CardTitle>
                 <CardDescription>
-                  {LINE_ADD_URL
-                    ? "Scan to add the Lead Mighty bot as a friend, then add it to your group."
-                    : "The shared bot is managed by Lead Mighty and always available."}
+                  Scan to add the Lead Mighty agent as a friend, then add it to your group.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
-                {LINE_ADD_URL && (
-                  <div className="rounded-xl border bg-white p-3 shadow-sm shrink-0">
-                    <QRCodeSVG value={LINE_ADD_URL} size={150} marginSize={1} />
-                  </div>
-                )}
+                <div className="rounded-xl border bg-white p-3 shadow-sm shrink-0">
+                  <img src="/lineqr.png" alt="LINE agent QR code" className="size-[150px] object-contain" />
+                </div>
                 <div className="flex flex-col gap-3 flex-1">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="size-2 rounded-full bg-green-600" />
@@ -246,7 +241,7 @@ export default function LineSettingsPage({
                     <a href={LINE_ADD_URL} target="_blank" rel="noopener noreferrer" className="w-fit">
                       <Button variant="outline" size="sm">
                         <IconExternalLink className="size-4" />
-                        Add bot on LINE
+                        Add agent on LINE
                       </Button>
                     </a>
                   )}
@@ -351,11 +346,11 @@ export default function LineSettingsPage({
                 <IconBrandLine className="size-4 text-[#06C755]" />
                 Connect a group
               </CardTitle>
-              <CardDescription>Add the bot to your LINE group, then link it with a token.</CardDescription>
+              <CardDescription>Add the agent to your LINE group, then link it with a token.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <ol className="text-sm text-muted-foreground flex flex-col gap-2 list-decimal list-inside">
-                <li>Add the {managed ? "Lead Mighty" : "your"} bot to the LINE group.</li>
+                <li>Add the {managed ? "Lead Mighty" : "your"} agent to the LINE group.</li>
                 <li>Open Group Chats and generate a connect token.</li>
                 <li>Send the token as a message in the LINE group.</li>
               </ol>
@@ -375,12 +370,12 @@ export default function LineSettingsPage({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {pendingMode === "managed" ? "Switch to LeadMighty's bot?" : "Switch to your own bot?"}
+              {pendingMode === "managed" ? "Switch to LeadMighty's agent?" : "Switch to your own agent?"}
             </DialogTitle>
             <DialogDescription>
               {pendingMode === "managed"
-                ? "New messages will be handled by the shared LINE bot. Groups linked to your own bot stay visible but won't be processed until you switch back."
-                : "New messages will be handled by your own LINE channel. Groups linked to the managed bot stay visible but won't be processed until you switch back."}
+                ? "New messages will be handled by the shared LINE agent. Groups linked to your own agent stay visible but won't be processed until you switch back."
+                : "New messages will be handled by your own LINE channel. Groups linked to the managed agent stay visible but won't be processed until you switch back."}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
